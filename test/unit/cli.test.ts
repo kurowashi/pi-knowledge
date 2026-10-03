@@ -85,3 +85,47 @@ test("a broken global config warns without failing", () => {
 		assert.match(result.stderr, /not valid JSON/);
 	});
 });
+
+test("stale, dups, and refs report from the catalog", () => {
+	project((cwd) => {
+		writeEntry(path.join(cwd, "knowledge"), "33333333", { title: "Alpha", review_after: "2020-01-01" }, BODY);
+		const stale = execute(["stale"], cwd);
+		assert.equal(stale.code, 0);
+		assert.match(stale.stdout, /review_after: 2020-01-01/);
+		const dups = execute(["dups"], cwd);
+		assert.equal(dups.code, 0);
+		assert.match(dups.stdout, /11111111 {2}33333333 {2}0\.9/);
+		const refs = execute(["refs", "11111111"], cwd);
+		assert.equal(refs.code, 0);
+		assert.match(refs.stdout, /no references/);
+		assert.equal(execute(["refs"], cwd).code, 2);
+	});
+});
+
+test("docs writes an index and checks drift", () => {
+	project((cwd) => {
+		fs.mkdirSync(path.join(cwd, "docs"), { recursive: true });
+		fs.writeFileSync(path.join(cwd, "docs", "guide.md"), "# Guide\nbody");
+		const write = execute(["docs"], cwd);
+		assert.equal(write.code, 0);
+		assert.match(write.stdout, /wrote/);
+		assert.ok(fs.existsSync(path.join(cwd, "docs", "INDEX.md")));
+		assert.equal(execute(["docs", "--check"], cwd).code, 0);
+		fs.writeFileSync(path.join(cwd, "docs", "guide.md"), "# Guide v2\nbody");
+		assert.equal(execute(["docs", "--check"], cwd).code, 1);
+	});
+});
+
+test("bench reads fixtures and validates them", () => {
+	project((cwd) => {
+		fs.writeFileSync(path.join(cwd, "fixtures.json"), JSON.stringify([{ query: "alpha", expect: ["11111111"] }]));
+		const result = execute(["bench", "fixtures.json"], cwd);
+		assert.equal(result.code, 0);
+		const report = JSON.parse(result.stdout) as { recallAt1: number; backend: string };
+		assert.equal(report.recallAt1, 1);
+		assert.equal(report.backend, "lexical");
+		assert.equal(execute(["bench"], cwd).code, 2);
+		fs.writeFileSync(path.join(cwd, "bad.json"), "[1]");
+		assert.equal(execute(["bench", "bad.json"], cwd).code, 2);
+	});
+});

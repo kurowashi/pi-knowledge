@@ -17,12 +17,14 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { buildCatalog, parseEntryFile, removeEntry, rescanCatalog, upsertEntry } from "./catalog.ts";
 import { type KnowledgeConfig, loadConfig } from "./config.ts";
+import { formatSearchHit } from "./format.ts";
 import { findKnowledgeTarget, type HookContext, type HookOutcome, planEdit, planWrite } from "./hooks.ts";
 import { lintCatalog } from "./lint.ts";
 import { type RenderedIndex, renderIndex } from "./render.ts";
+import { commandReport } from "./report.ts";
 import { resolveRoots } from "./roots.ts";
 import { capSearchText, scoreEntry, searchCatalog, tokenize } from "./search.ts";
-import type { CatalogData, Issue, ResolvedRoot, SearchHit, SearchOptions, Status } from "./types.ts";
+import type { CatalogData, Issue, ResolvedRoot, SearchOptions, Status } from "./types.ts";
 
 const RECALL_LIMIT = 3;
 const SEARCH_CONTENT_TOKENS = 3000;
@@ -52,12 +54,6 @@ function issueCounts(issues: Issue[]): { errors: number; warnings: number } {
 	return { errors, warnings };
 }
 
-function formatHit(hit: SearchHit, multiRoot: boolean): string {
-	const label = multiRoot ? `${hit.scope}:${hit.id}` : hit.id;
-	const when = hit.when.length > 0 ? ` — ${hit.when.join(" / ")}` : "";
-	return `${label}  ${hit.title}${when}\n  path: ${hit.path}`;
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -70,17 +66,6 @@ function toEdits(value: unknown): Array<{ oldText: string; newText: string }> | 
 		edits.push({ oldText: item["oldText"], newText: item["newText"] });
 	}
 	return edits;
-}
-
-function countTags(catalog: CatalogData): string {
-	const counts = new Map<string, number>();
-	for (const entry of catalog.entries) {
-		for (const tag of entry.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-	}
-	const lines = [...counts.entries()]
-		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-		.map(([tag, count]) => `${tag} (${count})`);
-	return lines.join("\n") || "no tags";
 }
 
 export default function knowledgeExtension(pi: ExtensionAPI): void {
@@ -275,7 +260,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 			};
 			const result = searchCatalog(catalog, options, config);
 			const capped = capSearchText(
-				result.hits.map((hit) => formatHit(hit, roots.length > 1)),
+				result.hits.map((hit) => formatSearchHit(hit, roots.length > 1)),
 				SEARCH_CONTENT_TOKENS,
 			);
 			return {
@@ -310,39 +295,16 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		return result.fallback ? `${text}\n(fallback: ${result.fallbackReason ?? "unavailable"})` : text;
 	};
 
-	const report = (action: string, rest: string[], ctx: ExtensionContext): string | null => {
-		if (catalog === null || config === null) return null;
-		switch (action) {
-			case "status":
-				return statusReport(ctx);
-			case "lint":
-				return (
-					lintCatalog(catalog, roots, ctx.cwd, new Date())
-						.map((issue) => `${issue.level} ${issue.path}: ${issue.message}`)
-						.join("\n") || "no issues"
-				);
-			case "list":
-				return (
-					catalog.entries
-						.filter((entry) => entry.status === "active")
-						.map((entry) => `${entry.id}  ${entry.title}`)
-						.join("\n") || "no entries"
-				);
-			case "tags":
-				return countTags(catalog);
-			case "find":
-				return (
-					catalog.entries
-						.filter((entry) => entry.status === "active" && rest.every((tag) => entry.tags.includes(tag)))
-						.map((entry) => `${entry.id}  ${entry.title}`)
-						.join("\n") || "no matches"
-				);
-			case "search":
-				return searchReport(rest);
-			default:
-				return null;
-		}
-	};
+	const report = (action: string, rest: string[], ctx: ExtensionContext): string | null =>
+		commandReport(action, rest, {
+			catalog,
+			config,
+			roots,
+			cwd: ctx.cwd,
+			now: new Date(),
+			status: () => statusReport(ctx),
+			search: (sub) => searchReport(sub),
+		});
 
 	const runCapture = async (ctx: ExtensionContext, rest: string[]): Promise<void> => {
 		if (config === null || config.capture.mode !== "manual") {

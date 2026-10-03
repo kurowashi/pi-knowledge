@@ -6,13 +6,13 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { findDuplicatePairs } from "./similar.ts";
 import type { CatalogData, EntryRecord, Issue, ResolvedRoot } from "./types.ts";
 
 const LINK_PATTERN = /\[\[([^\]\s]+)\]\]/g;
 const TITLE_LIMIT = 120;
 const WHEN_TOTAL_LIMIT = 200;
 const WHEN_COUNT_LIMIT = 5;
-const DUP_THRESHOLD = 0.6;
 
 export function extractLinks(body: string): string[] {
 	const links: string[] = [];
@@ -37,22 +37,6 @@ function resolveId(id: string, catalog: CatalogData, roots: ResolvedRoot[]): Ent
 	const root = roots.find((item) => item.scope === scope);
 	if (!root) return null;
 	return catalog.entries.find((entry) => entry.id === local && entry.dir === root.dir) ?? null;
-}
-
-function tokenSet(text: string): Set<string> {
-	const words = text.toLowerCase().split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9fff]+/);
-	return new Set(words.filter((word) => word.length > 1));
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-	if (a.size === 0 || b.size === 0) return 0;
-	let shared = 0;
-	for (const item of a) if (b.has(item)) shared++;
-	return shared / (a.size + b.size - shared);
-}
-
-function entryTokens(entry: EntryRecord): Set<string> {
-	return tokenSet(`${entry.title} ${entry.body}`);
 }
 
 function warn(entry: EntryRecord, message: string): Issue {
@@ -119,29 +103,7 @@ function collisionIssues(catalog: CatalogData): Issue[] {
 }
 
 function dupIssues(catalog: CatalogData): Issue[] {
-	const active = catalog.entries.filter((entry) => entry.status === "active");
-	const cache = new Map<string, Set<string>>();
-	const tokensOf = (entry: EntryRecord): Set<string> => {
-		const key = `${entry.dir}/${entry.id}`;
-		let set = cache.get(key);
-		if (set === undefined) {
-			set = entryTokens(entry);
-			cache.set(key, set);
-		}
-		return set;
-	};
-	const issues: Issue[] = [];
-	for (let i = 0; i < active.length; i++) {
-		for (let j = i + 1; j < active.length; j++) {
-			const a = active[i];
-			const b = active[j];
-			if (a === undefined || b === undefined) continue;
-			if (jaccard(tokensOf(a), tokensOf(b)) >= DUP_THRESHOLD) {
-				issues.push(warn(a, `similar to ${b.id}`));
-			}
-		}
-	}
-	return issues;
+	return findDuplicatePairs(catalog).map((pair) => warn(pair.a, `similar to ${pair.b.id}`));
 }
 
 function nestedMarkdown(root: ResolvedRoot): Issue[] {

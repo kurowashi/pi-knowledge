@@ -1,19 +1,26 @@
 #!/usr/bin/env node
 /**
- * kb CLI: list / tags / find / search / lint.
+ * kb CLI: list / tags / find / search / lint / stale / dups / refs / docs / bench.
  *
- * Uses the same config resolution and lint rules as the extension. Exit codes:
- * 0 ok, 1 lint errors or no find hits, 2 usage/config error. Phase 3 adds
- * backend selection and exit 3 for a required backend that is unavailable.
+ * Uses the same config resolution, lint rules, and catalog as the extension.
+ * Exit codes: 0 ok, 1 lint errors / no find hits / docs drift, 2 usage/config
+ * or docs read/write error, 3 a required backend is unavailable (Phase 3).
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseFixtures, runBench } from "./bench.ts";
 import { buildCatalog } from "./catalog.ts";
 import { type KnowledgeConfig, loadConfig } from "./config.ts";
+import { runDocs } from "./docs.ts";
+import { formatCatalog, formatIssues, formatSearchHits, formatTagCounts } from "./format.ts";
 import { lintCatalog } from "./lint.ts";
-import { renderLine } from "./render.ts";
+import { findReferences, formatReferences } from "./refs.ts";
 import { resolveRoots } from "./roots.ts";
 import { searchCatalog } from "./search.ts";
+import { findDuplicatePairs, formatDuplicatePairs } from "./similar.ts";
+import { formatStale, staleReport } from "./stale.ts";
 import type { CatalogData, ResolvedRoot, Status } from "./types.ts";
 
 export interface CliResult {
@@ -23,7 +30,7 @@ export interface CliResult {
 }
 
 export const CLI_USAGE =
-	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] | lint>";
+	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] | lint | stale | dups | refs <id> | docs [--check] | bench <fixture.json> [--repeat N]>";
 
 const STATUSES: readonly (Status | "any")[] = ["active", "any", "superseded", "deprecated"];
 
@@ -34,31 +41,17 @@ interface SearchArgs {
 	status: Status | "any";
 }
 
-function entryLines(catalog: CatalogData, roots: ResolvedRoot[], all: boolean): string[] {
-	const multi = roots.length > 1;
-	return catalog.entries
-		.filter((entry) => all || entry.status === "active")
-		.map((entry) => renderLine(entry, multi, "full"));
-}
-
-function tagCounts(catalog: CatalogData): string {
-	const counts = new Map<string, number>();
-	for (const entry of catalog.entries) {
-		for (const tag of entry.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-	}
-	return [...counts.entries()]
-		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-		.map(([tag, count]) => `${tag}\t${count}`)
-		.join("\n");
-}
-
-function usageError(stderr: string): CliResult {
-	return { code: 2, stdout: "", stderr: appendNote(stderr, CLI_USAGE) };
+function message(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function appendNote(stderr: string, note: string): string {
 	if (note === "") return stderr;
 	return stderr === "" ? note : `${stderr}\n${note}`;
+}
+
+function usageError(stderr: string): CliResult {
+	return { code: 2, stdout: "", stderr: appendNote(stderr, CLI_USAGE) };
 }
 
 function clampLimit(value: string | undefined): number {
@@ -90,17 +83,16 @@ function parseSearchArgs(rest: string[]): SearchArgs {
 }
 
 function runList(rest: string[], catalog: CatalogData, roots: ResolvedRoot[], stderr: string): CliResult {
-	return { code: 0, stdout: entryLines(catalog, roots, rest.includes("--all")).join("\n"), stderr };
+	return { code: 0, stdout: formatCatalog(catalog, roots.length > 1, rest.includes("--all")), stderr };
 }
 
 function runFind(rest: string[], catalog: CatalogData, roots: ResolvedRoot[], stderr: string): CliResult {
 	const tags = rest.filter((arg) => !arg.startsWith("--"));
 	if (tags.length === 0) return usageError(stderr);
 	const hits = catalog.entries.filter((entry) => tags.every((tag) => entry.tags.includes(tag)));
-	const multi = roots.length > 1;
 	return {
 		code: hits.length > 0 ? 0 : 1,
-		stdout: hits.map((entry) => renderLine(entry, multi, "full")).join("\n"),
+		stdout: formatCatalog({ ...catalog, entries: hits }, roots.length > 1, true),
 		stderr,
 	};
 }
@@ -120,19 +112,65 @@ function runSearch(
 		config,
 	);
 	const note = result.fallback ? `kb: backend ${config.search.backend} unavailable; used lexical` : "";
-	if (args.json) return { code: 0, stdout: JSON.stringify(result, null, 2), stderr: appendNote(stderr, note) };
-	const lines = result.hits.map((hit) => {
-		const label = roots.length > 1 ? `${hit.scope}:${hit.id}` : hit.id;
-		const when = hit.when.length > 0 ? ` — ${hit.when.join(" / ")}` : "";
-		return `${label}  ${hit.title}${when}\n  path: ${hit.path}`;
-	});
-	return { code: 0, stdout: lines.join("\n"), stderr: appendNote(stderr, note) };
+	const stdout = args.json ? JSON.stringify(result, null, 2) : formatSearchHits(result.hits, roots.length > 1);
+	return { code: 0, stdout, stderr: appendNote(stderr, note) };
 }
 
 function runLint(catalog: CatalogData, roots: ResolvedRoot[], cwd: string, stderr: string): CliResult {
 	const issues = lintCatalog(catalog, roots, cwd, new Date());
-	const text = issues.map((issue) => `${issue.level}\t${issue.path}: ${issue.message}`).join("\n");
-	return { code: issues.some((issue) => issue.level === "error") ? 1 : 0, stdout: text, stderr };
+	return { code: issues.some((issue) => issue.level === "error") ? 1 : 0, stdout: formatIssues(issues), stderr };
+}
+
+function runStale(catalog: CatalogData, config: KnowledgeConfig, cwd: string, stderr: string): CliResult {
+	return { code: 0, stdout: formatStale(staleReport(catalog, config, cwd, new Date())), stderr };
+}
+
+function runDups(catalog: CatalogData, stderr: string): CliResult {
+	return { code: 0, stdout: formatDuplicatePairs(findDuplicatePairs(catalog)), stderr };
+}
+
+function runRefs(rest: string[], catalog: CatalogData, stderr: string): CliResult {
+	const id = rest[0];
+	if (id === undefined || id.startsWith("--")) return usageError(stderr);
+	return { code: 0, stdout: formatReferences(findReferences(catalog, id), id), stderr };
+}
+
+function runDocsCommand(rest: string[], cwd: string, config: KnowledgeConfig, stderr: string): CliResult {
+	const outcome = runDocs(cwd, config, rest.includes("--check"));
+	return { code: outcome.code, stdout: outcome.stdout, stderr: appendNote(stderr, outcome.stderr) };
+}
+
+function repeatArg(rest: string[]): number {
+	const index = rest.indexOf("--repeat");
+	if (index < 0) return 5;
+	const value = Number(rest[index + 1]);
+	return Number.isFinite(value) && value > 0 ? Math.floor(value) : 5;
+}
+
+function runBenchCommand(
+	rest: string[],
+	catalog: CatalogData,
+	config: KnowledgeConfig,
+	cwd: string,
+	stderr: string,
+): CliResult {
+	const fixturePath = rest.find((arg) => !arg.startsWith("--"));
+	if (fixturePath === undefined) return usageError(stderr);
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(fs.readFileSync(path.resolve(cwd, fixturePath), "utf8"));
+	} catch (error) {
+		return {
+			code: 2,
+			stdout: "",
+			stderr: appendNote(stderr, `kb bench: cannot read ${fixturePath}: ${message(error)}`),
+		};
+	}
+	const fixtures = parseFixtures(parsed);
+	if (fixtures === null) {
+		return { code: 2, stdout: "", stderr: appendNote(stderr, "kb bench: fixtures must be [{ query, expect }]") };
+	}
+	return { code: 0, stdout: JSON.stringify(runBench(catalog, config, fixtures, repeatArg(rest)), null, 2), stderr };
 }
 
 export function execute(argv: string[], cwd: string): CliResult {
@@ -142,20 +180,20 @@ export function execute(argv: string[], cwd: string): CliResult {
 	const roots = resolveRoots(cwd, loaded.config.roots, warnings);
 	const catalog = buildCatalog(roots, warnings);
 	const stderr = warnings.map((warning) => `kb: ${warning}`).join("\n");
-	switch (action) {
-		case "list":
-			return runList(rest, catalog, roots, stderr);
-		case "tags":
-			return { code: 0, stdout: tagCounts(catalog), stderr };
-		case "find":
-			return runFind(rest, catalog, roots, stderr);
-		case "search":
-			return runSearch(rest, catalog, roots, loaded.config, stderr);
-		case "lint":
-			return runLint(catalog, roots, cwd, stderr);
-		default:
-			return usageError(stderr);
-	}
+	const runners: Record<string, () => CliResult> = {
+		list: () => runList(rest, catalog, roots, stderr),
+		tags: () => ({ code: 0, stdout: formatTagCounts(catalog), stderr }),
+		find: () => runFind(rest, catalog, roots, stderr),
+		search: () => runSearch(rest, catalog, roots, loaded.config, stderr),
+		lint: () => runLint(catalog, roots, cwd, stderr),
+		stale: () => runStale(catalog, loaded.config, cwd, stderr),
+		dups: () => runDups(catalog, stderr),
+		refs: () => runRefs(rest, catalog, stderr),
+		docs: () => runDocsCommand(rest, cwd, loaded.config, stderr),
+		bench: () => runBenchCommand(rest, catalog, loaded.config, cwd, stderr),
+	};
+	const runner = runners[action];
+	return runner ? runner() : usageError(stderr);
 }
 
 const invoked = process.argv[1];

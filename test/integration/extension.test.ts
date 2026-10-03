@@ -323,3 +323,20 @@ test("lint findings are announced at session start", async () => {
 		assert.ok(h.notifications.some((note) => note.includes("errors")));
 	});
 });
+
+test("quality subcommands report", async () => {
+	await withProject(async (cwd) => {
+		writeEntry(path.join(cwd, "knowledge"), "11111111", { title: "Same", review_after: "2020-01-01" }, BODY);
+		writeEntry(path.join(cwd, "knowledge"), "22222222", { title: "Same" }, BODY);
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		await h.run("stale");
+		assert.match(h.notifications.at(-1) ?? "", /review_after/);
+		await h.run("dups");
+		assert.match(h.notifications.at(-1) ?? "", /11111111 {2}22222222/);
+		await h.run("refs 11111111");
+		assert.ok((h.notifications.at(-1) ?? "").length > 0);
+		await h.run("docs");
+		assert.match(h.notifications.at(-1) ?? "", /kb docs/);
+	});
+});

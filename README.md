@@ -2,14 +2,15 @@
 
 Project knowledge for Pi. The plugin injects a small discovery index at session start, validates Markdown entries while you edit them, searches them lexically, and bundles a `kb` CLI for CI.
 
-**Scope (v0.1.0):** `kb list`, `kb tags`, `kb find`, `kb search` (lexical), `kb lint`, and the `/kb` command are implemented. `stale`, `dups`, `refs`, `docs`, `bench`, and embedding search are planned (see [DESIGN.md §21](DESIGN.md#21-実装フェーズ)).
+**Scope (v0.1.0):** `kb list`, `tags`, `find`, `search` (lexical), `lint`, `stale`, `dups`, `refs`, `docs`, `bench`, and the `/kb` command are implemented. Embedding and FTS5 search are planned (see [DESIGN.md §21](DESIGN.md#21-実装フェーズ)).
 
 ## What it does
 
 - **Injects an index** of `knowledge/` entries into the system prompt within a token budget. Bodies stay out of context until read.
 - **Assigns entry IDs** and validates every `write` / `edit` to the knowledge root. No separate write tool is added.
 - **Searches** entries with `kb_search` (lexical, tag/status/scope filters).
-- **Lints** entries with `kb lint` (form errors, dangling `[[id]]` links, stale `review_after`, duplicates).
+- **Lints and curates** entries with `kb lint` (form errors, dangling `[[id]]` links, stale `review_after`, duplicates), `kb stale`, `kb dups`, and `kb refs`.
+- **Generates a document index** with `kb docs` and checks for drift in CI with `kb docs --check`.
 
 ## Install
 
@@ -54,9 +55,14 @@ kb tags                 # tag counts
 kb find <tag>...        # AND filter
 kb search "query"       # lexical search
 kb lint                 # errors and warnings (exit 1 on errors)
+kb stale                # overdue review_after / old git dates
+kb dups                 # near-duplicate candidates
+kb refs <id>            # backlinks
+kb docs [--check]       # document index generation / drift check
+kb bench <fixture.json> # recall and latency for a fixture set
 ```
 
-`kb stale`, `kb dups`, `kb refs`, `kb docs`, and `kb bench` are planned for the quality phase (see [DESIGN.md §21](DESIGN.md#21-実装フェーズ)).
+Embedding and FTS5 search are planned for a later phase (see [DESIGN.md §21](DESIGN.md#21-実装フェーズ)).
 
 ## Configuration
 

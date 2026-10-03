@@ -17,8 +17,8 @@
 | 検索 | lexical。タグ・status・scope で絞れる。FTS5 / embedding / hybrid は Phase 3 |
 | 書き込み | `write` / `edit` を hook が検証。専用ツールなし |
 | キャプチャ | `manual`(コマンド実行時のみ) |
-| document index | Phase 2。生成のみ。注入しない |
-| CLI | `kb` bin。Phase 1 は list / tags / find / search(lexical) / lint。lint は CI の必須ゲート |
+| document index | 生成のみ。注入しない |
+| CLI | `kb` bin。list / tags / find / search(lexical) / lint / stale / dups / refs / docs / bench。lint は CI の必須ゲート |
 | 実行時依存 | なし(Node 組み込みのみ) |
 
 ### 1.2 処理の流れ
@@ -33,8 +33,8 @@ flowchart LR
   C --> S["kb_search"]
   S --> R[read]
   R --> K
-  K --> L["kb lint (Phase 1) / stale / dups (Phase 2)"]
-  K --> T["kb docs (Phase 2) の入力"]
+  K --> L["kb lint / stale / dups"]
+  K --> T["kb docs の入力"]
 ```
 
 既定フロー:
@@ -497,13 +497,13 @@ source: docs/api.md
 | `kb tags` / `kb find <tag>...` | タグ一覧 / AND 検索 | find は0件で1 |
 | `kb search <query> [--json] [--status <s>] [--scope <s>] [--limit <n>]` | 検索結果。limit 上限50 | 0件は0 |
 | `kb lint` | エラーと警告の一覧 | エラーありで1 |
-| `kb stale` / `kb dups` / `kb refs <id>` (Phase 2) | 各一覧 | 0 |
-| `kb docs [--check]` (Phase 2) | document index の生成 / ドリフト検査 | check は差分ありで1。読み込み・書き込み失敗は2 |
-| `kb bench` (Phase 2) | backend 別計測(JSON) | 0 |
+| `kb stale` / `kb dups` / `kb refs <id>` | 各一覧 | 0 |
+| `kb docs [--check]` | document index の生成 / ドリフト検査 | check は差分ありで1。読み込み・書き込み失敗は2 |
+| `kb bench` | backend 別計測(JSON) | 0 |
 | `kb search --backend <b> --require-backend` (Phase 3) | backend 指定と厳格化 | backend 不可かつ require で3 |
 
 - 設定解決は `$PI_CODING_AGENT_DIR/knowledge.json` → `.pi/knowledge.json` の順。project は trust 時のみ読む。
-- CI の最小構成は Phase 1 では `kb lint`。Phase 2 で `kb docs --check` を加える。警告のみでは止めない。
+- CI の最小構成は `kb lint` と `kb docs --check`。警告のみでは止めない。
 - `/kb status` は pi コマンド(実装済み)。CLI の `kb status` は提供しない。
 
 ## 15. pi 統合面
@@ -632,8 +632,8 @@ source: docs/api.md
 
 | Phase | 内容 | 完了条件 |
 |---|---|---|
-| 1 MVP | 解析・catalog・注入・lint・write/edit hook・capture(manual)・スキル・CLI list/tags/find/search(lexical)/lint・設定 | FR1–FR4、FR6、FR9、NFR1–NFR2、NFR4–NFR5 |
-| 2 品質 | stale / refs / dups / docs、bench | FR7–FR8、性能目標 |
+| 1 MVP (実装済み) | 解析・catalog・注入・lint・write/edit hook・capture(manual)・スキル・CLI list/tags/find/search(lexical)/lint・設定 | FR1–FR4、FR6、FR9、NFR1–NFR2、NFR4–NFR5 |
+| 2 品質 (実装済み) | stale / refs / dups / docs、bench | FR7–FR8、性能目標 |
 | 3 検証と拡張 | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
 | 4 共有 | readonly の共有 root、索引の永続キャッシュ | 複数人運用で破綻しない |
 

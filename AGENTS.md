@@ -32,6 +32,9 @@
 | 注入は session_start で凍結し、セッション中に更新しない | `test/integration/extension.test.ts` | `src/index.ts` |
 | 注入はトークン予算を超えない | `test/unit/render.test.ts` | `src/render.ts` |
 | 本文は注入しない | `test/unit/render.test.ts` | `src/render.ts` |
+| 文書索引は生成物自身とバイナリを除外し、注入しない | `test/unit/docs.test.ts` | `src/docs.ts` |
+| Git 不在・shallow では git 日付をスキップして警告 | `test/unit/stale.test.ts` | `src/stale.ts` |
+| refs は `[[id]]` と `supersedes` の両方を拾う | `test/unit/refs.test.ts` | `src/refs.ts` |
 
 ### 設定
 
