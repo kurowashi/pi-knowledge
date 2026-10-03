@@ -53,13 +53,13 @@ export function scoreEntry(entry: EntryRecord, terms: string[]): number {
 	return Math.min(1, score / (terms.length * 3));
 }
 
-function matchesFilters(entry: EntryRecord, options: SearchOptions): boolean {
+export function matchesFilters(entry: EntryRecord, options: SearchOptions): boolean {
 	if (options.status !== "any" && entry.status !== options.status) return false;
 	if (options.scope !== null && entry.scope !== options.scope) return false;
 	return options.tags.every((tag) => entry.tags.includes(tag));
 }
 
-function toHit(
+export function toHit(
 	entry: EntryRecord,
 	score: number,
 	backend: Backend,

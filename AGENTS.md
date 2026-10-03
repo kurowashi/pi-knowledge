@@ -35,6 +35,9 @@
 | 文書索引は生成物自身とバイナリを除外し、注入しない | `test/unit/docs.test.ts` | `src/docs.ts` |
 | Git 不在・shallow では git 日付をスキップして警告 | `test/unit/stale.test.ts` | `src/stale.ts` |
 | refs は `[[id]]` と `supersedes` の両方を拾う | `test/unit/refs.test.ts` | `src/refs.ts` |
+| 利用不可の backend は lexical へフォールバックし、理由を必ず表示する | `test/unit/search_service.test.ts` | `src/search_service.ts` |
+| embedding 失敗は分類され、検索を止めない | `test/unit/search_service.test.ts` | `src/backend_embedding.ts` |
+| FTS5 が無い環境でも lexical で動く | `test/unit/search_service.test.ts` | `src/backend_fts.ts` |
 
 ### 設定
 

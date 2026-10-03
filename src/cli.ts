@@ -2,13 +2,14 @@
 /**
  * kb CLI: list / tags / find / search / lint / stale / dups / refs / docs / bench.
  *
- * Uses the same config resolution, lint rules, and catalog as the extension.
- * Exit codes: 0 ok, 1 lint errors / no find hits / docs drift, 2 usage/config
- * or docs read/write error, 3 a required backend is unavailable (Phase 3).
+ * Uses the same config resolution, lint rules, search service, and catalog as
+ * the extension. Exit codes: 0 ok, 1 lint errors / no find hits / docs drift,
+ * 2 usage/config or docs read/write error, 3 `--require-backend` was given and
+ * the requested backend fell back to lexical.
  */
 
 import { pathToFileURL } from "node:url";
-import { loadFixtures, repeatArg, runBench } from "./bench.ts";
+import { backendArg, loadFixtures, repeatArg, runBench } from "./bench.ts";
 import { buildCatalog } from "./catalog.ts";
 import { type KnowledgeConfig, loadConfig } from "./config.ts";
 import { runDocs } from "./docs.ts";
@@ -16,10 +17,10 @@ import { formatCatalog, formatIssues, formatSearchHits, formatTagCounts } from "
 import { lintCatalog } from "./lint.ts";
 import { findReferences, formatReferences } from "./refs.ts";
 import { resolveRoots } from "./roots.ts";
-import { searchCatalog } from "./search.ts";
+import { SearchService } from "./search_service.ts";
 import { findDuplicatePairs, formatDuplicatePairs } from "./similar.ts";
 import { formatStale, staleReport } from "./stale.ts";
-import type { CatalogData, ResolvedRoot, Scope, Status } from "./types.ts";
+import type { Backend, CatalogData, ResolvedRoot, Scope, Status } from "./types.ts";
 
 export interface CliResult {
 	code: number;
@@ -28,17 +29,21 @@ export interface CliResult {
 }
 
 export const CLI_USAGE =
-	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] [--scope S] | lint | stale | dups | refs <id> | docs [--check] | bench <fixture.json> [--repeat N]>";
+	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] [--scope S] [--backend B] [--require-backend] | lint | stale | dups | refs <id> | docs [--check] | bench <fixture.json> [--repeat N] [--backend B]>";
 
 const STATUSES: readonly (Status | "any")[] = ["active", "any", "superseded", "deprecated"];
+const BACKENDS: readonly Backend[] = ["lexical", "fts5", "embedding", "hybrid"];
 
 interface SearchArgs {
 	query: string;
 	json: boolean;
 	limit: number;
 	status: Status | "any";
-	scope: Scope | null;
 	statusWarning: string | null;
+	scope: Scope | null;
+	backend: Backend | null;
+	backendWarning: string | null;
+	requireBackend: boolean;
 }
 
 function appendNote(stderr: string, note: string): string {
@@ -65,27 +70,63 @@ function parseScope(value: string | undefined): Scope | null {
 	return value === "project" || value === "user" ? value : null;
 }
 
-function parseSearchArgs(rest: string[]): SearchArgs {
-	const args: SearchArgs = { query: "", json: false, limit: 10, status: "active", scope: null, statusWarning: null };
-	const words: string[] = [];
-	for (let i = 0; i < rest.length; i++) {
-		const arg = rest[i] ?? "";
-		if (arg === "--json") args.json = true;
-		else if (arg === "--limit") {
-			args.limit = clampLimit(rest[i + 1]);
-			i++;
-		} else if (arg === "--status") {
-			const parsed = parseStatus(rest[i + 1]);
-			args.status = parsed.status;
-			args.statusWarning = parsed.warning;
-			i++;
-		} else if (arg === "--scope") {
-			args.scope = parseScope(rest[i + 1]);
-			i++;
-		} else words.push(arg);
+interface ParseState {
+	args: SearchArgs;
+	words: string[];
+}
+
+function applyFlag(state: ParseState, rest: string[], index: number): number {
+	const arg = rest[index] ?? "";
+	if (arg === "--json") {
+		state.args.json = true;
+		return index;
 	}
-	args.query = words.join(" ");
-	return args;
+	if (arg === "--require-backend") {
+		state.args.requireBackend = true;
+		return index;
+	}
+	if (arg === "--limit") {
+		state.args.limit = clampLimit(rest[index + 1]);
+		return index + 1;
+	}
+	if (arg === "--status") {
+		const parsed = parseStatus(rest[index + 1]);
+		state.args.status = parsed.status;
+		state.args.statusWarning = parsed.warning;
+		return index + 1;
+	}
+	if (arg === "--scope") {
+		state.args.scope = parseScope(rest[index + 1]);
+		return index + 1;
+	}
+	if (arg === "--backend") {
+		const value = rest[index + 1];
+		if (value !== undefined && (BACKENDS as readonly string[]).includes(value)) state.args.backend = value as Backend;
+		else state.args.backendWarning = `kb: unknown backend ${value ?? ""}; using the configured backend`;
+		return index + 1;
+	}
+	state.words.push(arg);
+	return index;
+}
+
+function parseSearchArgs(rest: string[]): SearchArgs {
+	const state: ParseState = {
+		args: {
+			query: "",
+			json: false,
+			limit: 10,
+			status: "active",
+			statusWarning: null,
+			scope: null,
+			backend: null,
+			backendWarning: null,
+			requireBackend: false,
+		},
+		words: [],
+	};
+	for (let i = 0; i < rest.length; i++) i = applyFlag(state, rest, i);
+	state.args.query = state.words.join(" ");
+	return state.args;
 }
 
 function runList(rest: string[], catalog: CatalogData, roots: ResolvedRoot[], stderr: string): CliResult {
@@ -103,28 +144,32 @@ function runFind(rest: string[], catalog: CatalogData, roots: ResolvedRoot[], st
 	};
 }
 
-function runSearch(
+async function runSearch(
 	rest: string[],
-	catalog: CatalogData,
 	roots: ResolvedRoot[],
 	config: KnowledgeConfig,
+	service: SearchService,
 	stderr: string,
-): CliResult {
+): Promise<CliResult> {
 	const args = parseSearchArgs(rest);
 	if (args.query.trim() === "") return usageError(stderr);
-	const result = searchCatalog(
-		catalog,
+	const requested = args.backend ?? config.search.backend;
+	const result = await service.search(
 		{ query: args.query, tags: [], status: args.status, scope: args.scope, limit: args.limit },
-		config,
+		requested,
 	);
 	const notes = [
-		result.fallback ? `kb: backend ${config.search.backend} unavailable; used lexical` : "",
+		result.fallback
+			? `kb: backend ${requested} unavailable; used lexical (${result.fallbackReason ?? "unavailable"})`
+			: "",
 		args.statusWarning ?? "",
+		args.backendWarning ?? "",
 	]
 		.filter((note) => note !== "")
 		.join("\n");
 	const stdout = args.json ? JSON.stringify(result, null, 2) : formatSearchHits(result.hits, roots.length > 1);
-	return { code: 0, stdout, stderr: appendNote(stderr, notes) };
+	const code = args.requireBackend && result.fallback ? 3 : 0;
+	return { code, stdout, stderr: appendNote(stderr, notes) };
 }
 
 function runLint(catalog: CatalogData, roots: ResolvedRoot[], cwd: string, stderr: string): CliResult {
@@ -151,33 +196,41 @@ function runDocsCommand(rest: string[], cwd: string, config: KnowledgeConfig, st
 	return { code: outcome.code, stdout: outcome.stdout, stderr: appendNote(stderr, outcome.stderr) };
 }
 
-function runBenchCommand(
+async function runBenchCommand(
 	rest: string[],
 	catalog: CatalogData,
 	config: KnowledgeConfig,
 	cwd: string,
 	stderr: string,
-): CliResult {
+): Promise<CliResult> {
 	const fixturePath = rest.find((arg) => !arg.startsWith("--"));
 	if (fixturePath === undefined) return usageError(stderr);
 	const loaded = loadFixtures(cwd, fixturePath);
 	if ("error" in loaded) return { code: 2, stdout: "", stderr: appendNote(stderr, `kb bench: ${loaded.error}`) };
-	const report = runBench(catalog, config, loaded.fixtures, repeatArg(rest));
-	return { code: 0, stdout: JSON.stringify(report, null, 2), stderr };
+	const requested = backendArg(rest);
+	const reports = await runBench(
+		catalog,
+		config,
+		loaded.fixtures,
+		repeatArg(rest),
+		requested === null ? undefined : [requested],
+	);
+	return { code: 0, stdout: JSON.stringify(reports, null, 2), stderr };
 }
 
-export function execute(argv: string[], cwd: string): CliResult {
+export async function execute(argv: string[], cwd: string): Promise<CliResult> {
 	const [action = "list", ...rest] = argv;
 	const loaded = loadConfig(cwd, true);
 	const warnings = [...loaded.warnings];
 	const roots = resolveRoots(cwd, loaded.config.roots, warnings);
 	const catalog = buildCatalog(roots, warnings);
 	const stderr = warnings.map((warning) => `kb: ${warning}`).join("\n");
-	const runners: Record<string, () => CliResult> = {
+	const service = new SearchService(catalog, loaded.config);
+	const runners: Record<string, () => CliResult | Promise<CliResult>> = {
 		list: () => runList(rest, catalog, roots, stderr),
 		tags: () => ({ code: 0, stdout: formatTagCounts(catalog), stderr }),
 		find: () => runFind(rest, catalog, roots, stderr),
-		search: () => runSearch(rest, catalog, roots, loaded.config, stderr),
+		search: () => runSearch(rest, roots, loaded.config, service, stderr),
 		lint: () => runLint(catalog, roots, cwd, stderr),
 		stale: () => runStale(catalog, loaded.config, cwd, stderr),
 		dups: () => runDups(catalog, stderr),
@@ -186,13 +239,20 @@ export function execute(argv: string[], cwd: string): CliResult {
 		bench: () => runBenchCommand(rest, catalog, loaded.config, cwd, stderr),
 	};
 	const runner = runners[action];
-	return runner ? runner() : usageError(stderr);
+	return runner ? await runner() : usageError(stderr);
 }
 
 const invoked = process.argv[1];
 if (invoked !== undefined && import.meta.url === pathToFileURL(invoked).href) {
-	const result = execute(process.argv.slice(2), process.cwd());
-	if (result.stdout) process.stdout.write(`${result.stdout}\n`);
-	if (result.stderr) process.stderr.write(result.stderr);
-	process.exitCode = result.code;
+	void execute(process.argv.slice(2), process.cwd()).then(
+		(result) => {
+			if (result.stdout) process.stdout.write(`${result.stdout}\n`);
+			if (result.stderr) process.stderr.write(result.stderr);
+			process.exitCode = result.code;
+		},
+		(error: unknown) => {
+			process.stderr.write(`kb: ${error instanceof Error ? error.message : String(error)}\n`);
+			process.exitCode = 2;
+		},
+	);
 }

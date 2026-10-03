@@ -3,7 +3,7 @@
  * thin adapter and the CLI and command surfaces use the same formatters.
  */
 
-import { loadFixtures, repeatArg, runBench } from "./bench.ts";
+import { backendArg, loadFixtures, repeatArg, runBench } from "./bench.ts";
 import type { KnowledgeConfig } from "./config.ts";
 import { runDocs } from "./docs.ts";
 import { formatCatalog, formatIssues, formatTagCounts } from "./format.ts";
@@ -22,13 +22,13 @@ export interface ReportContext {
 	/** Extension-supplied status text (includes injected-index state). */
 	status: () => string | null;
 	/** Extension-supplied search output (uses the session catalog). */
-	search: (rest: string[]) => string | null;
+	search: (rest: string[]) => Promise<string | null>;
 }
 
-export function commandReport(action: string, rest: string[], ctx: ReportContext): string | null {
+export async function commandReport(action: string, rest: string[], ctx: ReportContext): Promise<string | null> {
 	const { catalog, config } = ctx;
 	if (catalog === null || config === null) return null;
-	const handlers: Record<string, () => string | null> = {
+	const handlers: Record<string, () => string | null | Promise<string | null>> = {
 		status: () => ctx.status(),
 		lint: () => formatIssues(lintCatalog(catalog, ctx.roots, ctx.cwd, ctx.now)) || "no issues",
 		list: () => formatCatalog(catalog, ctx.roots.length > 1, false) || "no entries",
@@ -51,14 +51,22 @@ export function commandReport(action: string, rest: string[], ctx: ReportContext
 			const outcome = runDocs(ctx.cwd, config, rest.includes("--check"));
 			return [outcome.stdout, outcome.stderr].filter((line) => line !== "").join("\n") || "kb docs: done";
 		},
-		bench: () => {
+		bench: async () => {
 			const fixturePath = rest.find((arg) => !arg.startsWith("--"));
 			if (fixturePath === undefined) return "usage: /kb bench <fixture.json> [--repeat N]";
 			const loaded = loadFixtures(ctx.cwd, fixturePath);
 			if ("error" in loaded) return `kb bench: ${loaded.error}`;
-			return JSON.stringify(runBench(catalog, config, loaded.fixtures, repeatArg(rest)), null, 2);
+			const requested = backendArg(rest);
+			const reports = await runBench(
+				catalog,
+				config,
+				loaded.fixtures,
+				repeatArg(rest),
+				requested === null ? undefined : [requested],
+			);
+			return JSON.stringify(reports, null, 2);
 		},
 	};
 	const handler = handlers[action];
-	return handler ? handler() : null;
+	return handler ? await handler() : null;
 }

@@ -23,8 +23,9 @@ import { lintCatalog } from "./lint.ts";
 import { type RenderedIndex, renderIndex } from "./render.ts";
 import { commandReport } from "./report.ts";
 import { resolveRoots } from "./roots.ts";
-import { capSearchText, scoreEntry, searchCatalog, tokenize } from "./search.ts";
-import type { CatalogData, Issue, ResolvedRoot, SearchOptions, Status } from "./types.ts";
+import { capSearchText, scoreEntry, tokenize } from "./search.ts";
+import { SearchService } from "./search_service.ts";
+import type { Backend, CatalogData, Issue, ResolvedRoot, Scope, SearchOptions, Status } from "./types.ts";
 
 const RECALL_LIMIT = 3;
 const SEARCH_CONTENT_TOKENS = 3000;
@@ -42,6 +43,47 @@ function message(error: unknown): string {
 
 function cap(text: string, limit: number): string {
 	return text.length <= limit ? text : `${text.slice(0, limit)}\n… (truncated)`;
+}
+
+interface KnowledgeToolParams {
+	query?: string;
+	tags?: string[];
+	status?: Status | "any";
+	scope?: Scope;
+	limit?: number;
+	backend?: Backend;
+}
+
+async function runKnowledgeSearch(
+	catalog: CatalogData,
+	config: KnowledgeConfig,
+	service: SearchService | null,
+	params: KnowledgeToolParams,
+	roots: ResolvedRoot[],
+): Promise<{ content: Array<{ type: "text"; text: string }>; details: unknown }> {
+	const query = params.query?.trim() ?? "";
+	const tags = params.tags ?? [];
+	if (query === "" && tags.length === 0) {
+		return { content: [{ type: "text", text: "Provide a query or at least one tag." }], details: { hits: [] } };
+	}
+	const options: SearchOptions = {
+		query,
+		tags,
+		status: params.status ?? "active",
+		scope: params.scope ?? null,
+		limit: params.limit ?? 10,
+	};
+	const requested = params.backend ?? config.search.backend;
+	const active = service ?? new SearchService(catalog, config);
+	const result = await active.search(options, requested);
+	const capped = capSearchText(
+		result.hits.map((hit) => formatSearchHit(hit, roots.length > 1)),
+		SEARCH_CONTENT_TOKENS,
+	);
+	return {
+		content: [{ type: "text", text: capped.text || "No matches." }],
+		details: { ...result, truncated: capped.truncated },
+	};
 }
 
 function issueCounts(issues: Issue[]): { errors: number; warnings: number } {
@@ -72,6 +114,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 	let config: KnowledgeConfig | null = null;
 	let roots: ResolvedRoot[] = [];
 	let catalog: CatalogData | null = null;
+	let service: SearchService | null = null;
 	let rendered: RenderedIndex | null = null;
 	let section = "";
 	let warnings: string[] = [];
@@ -107,10 +150,12 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		if (!config.enabled) {
 			roots = [];
 			catalog = null;
+			service = null;
 			return;
 		}
 		roots = resolveRoots(ctx.cwd, config.roots, warnings);
 		catalog = buildCatalog(roots, warnings);
+		service = new SearchService(catalog, config);
 		rendered = renderIndex(catalog, roots, config, ctx.model?.contextWindow ?? null);
 		section = config.injection.enabled && roots.length > 0 ? rendered.text : "";
 		const counts = issueCounts(lintCatalog(catalog, roots, ctx.cwd, new Date()));
@@ -196,6 +241,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		if (catalog === null) return;
 		if (toolName === "write" || toolName === "edit") refreshTarget(input["path"], ctx);
 		else if (toolName === "bash") catalog = rescanCatalog(catalog, roots, warnings);
+		if (config !== null && catalog !== null) service = new SearchService(catalog, config);
 	};
 
 	pi.on("tool_result", (event, ctx) => {
@@ -238,35 +284,17 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 				Type.Union([Type.Literal("project"), Type.Literal("user")], { description: "Limit to one scope." }),
 			),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, description: "Maximum results (default 10)." })),
+			backend: Type.Optional(
+				Type.Union([Type.Literal("lexical"), Type.Literal("fts5"), Type.Literal("embedding"), Type.Literal("hybrid")], {
+					description: "Backend override for this call (default: config).",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			if (config === null || catalog === null || !config.enabled) {
 				return { content: [{ type: "text" as const, text: "No knowledge base is loaded." }], details: { hits: [] } };
 			}
-			const query = params.query?.trim() ?? "";
-			const tags = params.tags ?? [];
-			if (query === "" && tags.length === 0) {
-				return {
-					content: [{ type: "text" as const, text: "Provide a query or at least one tag." }],
-					details: { hits: [] },
-				};
-			}
-			const options: SearchOptions = {
-				query,
-				tags,
-				status: (params.status ?? "active") as Status | "any",
-				scope: params.scope ?? null,
-				limit: params.limit ?? 10,
-			};
-			const result = searchCatalog(catalog, options, config);
-			const capped = capSearchText(
-				result.hits.map((hit) => formatSearchHit(hit, roots.length > 1)),
-				SEARCH_CONTENT_TOKENS,
-			);
-			return {
-				content: [{ type: "text" as const, text: capped.text || "No matches." }],
-				details: { ...result, truncated: capped.truncated },
-			};
+			return runKnowledgeSearch(catalog, config, service, params, roots);
 		},
 	});
 
@@ -283,18 +311,17 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		].join("\n");
 	};
 
-	const searchReport = (rest: string[]): string => {
-		if (catalog === null || config === null) return "pi-knowledge: not loaded";
-		const result = searchCatalog(
-			catalog,
+	const searchReport = async (rest: string[]): Promise<string> => {
+		if (catalog === null || config === null || service === null) return "pi-knowledge: not loaded";
+		const result = await service.search(
 			{ query: rest.join(" "), tags: [], status: "active", scope: null, limit: 10 },
-			config,
+			config.search.backend,
 		);
 		const text = formatSearchHits(result.hits, roots.length > 1) || "no matches";
 		return result.fallback ? `${text}\n(fallback: ${result.fallbackReason ?? "unavailable"})` : text;
 	};
 
-	const report = (action: string, rest: string[], ctx: ExtensionContext): string | null =>
+	const report = (action: string, rest: string[], ctx: ExtensionContext): Promise<string | null> =>
 		commandReport(action, rest, {
 			catalog,
 			config,
@@ -327,7 +354,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 				await runCapture(ctx, rest);
 				return;
 			}
-			const text = report(action, rest, ctx);
+			const text = await report(action, rest, ctx);
 			if (text === null) {
 				notify(
 					ctx,

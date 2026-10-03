@@ -14,7 +14,7 @@
 | エントリ | `knowledge/<id>.md` の自己完結ノート |
 | ID | プラグインが付与する `hex8`。不変 |
 | 注入 | 有効。固定文 + 索引。実効予算 min(4,000, max(1,000, 文脈窓×2%)) |
-| 検索 | lexical。タグ・status・scope で絞れる。FTS5 / embedding / hybrid は Phase 3 |
+| 検索 | lexical(既定)/ FTS5 / embedding / hybrid を選択できる。タグ・status・scope で絞れる |
 | 書き込み | `write` / `edit` を hook が検証。専用ツールなし |
 | キャプチャ | `manual`(コマンド実行時のみ) |
 | document index | 生成のみ。注入しない |
@@ -336,7 +336,7 @@ source: docs/api.md
 - フォールバック先は常に lexical。失敗時は `backend` に実使用値、`fallback: true`、`fallbackReason` を details / stderr / JSON に出す。黙って切り替えない。
 - `fallbackReason` は `unavailable`(未設定・接続不可) / `auth`(401/403) / `network`(DNS・TLS・timeout) / `rate_limited`(429) / `server`(5xx) / `protocol`(不正応答・次元不一致) のいずれか。
 - FTS5 は検出失敗・初期化失敗・クエリ失敗のいずれでも lexical へ落とす。
-- ツールはフォールバックを許可する。厳格指定は CLI の `--require-backend`(Phase 3)に限る。
+- ツールはフォールバックを許可する。厳格指定は CLI の `--require-backend` に限る。
 - embedding 利用時はエントリ本文が外部へ送信される。README に明記する(§18)。
 
 ### 9.2 入力と結果
@@ -349,7 +349,7 @@ source: docs/api.md
 | `tags` | string[] | なし | 全タグ一致(AND) |
 | `status` | `"active"` / `"any"` / `"superseded"` / `"deprecated"` | `"active"` | `any` は全 status |
 | `scope` | string | なし | `project` / `user` を指定。省略時は全 root |
-| `backend` | string | 設定値 | Phase 3。その呼び出しだけ設定を上書き(Phase 1 の実装は lexical のみ) |
+| `backend` | string | 設定値 | その呼び出しだけ設定を上書き |
 | `limit` | integer | 10 | 1〜50 |
 
 結果型は `{ id, scope, title, when, tags, status, source, path, score, backend, fallback?, fallbackReason? }`。`score` は 0〜1 の同一 backend 内の順位付け専用で、backend 間で比較しない。`path` は `read` に渡せる実パス。同点は id の辞書順で決める。
@@ -500,7 +500,7 @@ source: docs/api.md
 | `kb stale` / `kb dups` / `kb refs <id>` | 各一覧 | 0 |
 | `kb docs [--check]` | document index の生成 / ドリフト検査 | check は差分ありで1。読み込み・書き込み失敗は2 |
 | `kb bench` | backend 別計測(JSON) | 0 |
-| `kb search --backend <b> --require-backend` (Phase 3) | backend 指定と厳格化 | backend 不可かつ require で3 |
+| `kb search --backend <b> --require-backend` | backend 指定と厳格化 | backend 不可かつ require で3 |
 
 - 設定解決は `$PI_CODING_AGENT_DIR/knowledge.json` → `.pi/knowledge.json` の順。project は trust 時のみ読む。
 - CI の最小構成は `kb lint` と `kb docs --check`。警告のみでは止めない。
@@ -634,7 +634,7 @@ source: docs/api.md
 |---|---|---|
 | 1 MVP (実装済み) | 解析・catalog・注入・lint・write/edit hook・capture(manual)・スキル・CLI list/tags/find/search(lexical)/lint・設定 | FR1–FR4、FR6、FR9、NFR1–NFR2、NFR4–NFR5 |
 | 2 品質 (実装済み) | stale / refs / dups / docs、bench | FR7–FR8、性能目標 |
-| 3 検証と拡張 | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
+| 3 検証と拡張 (実装済み) | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
 | 4 共有 | readonly の共有 root、索引の永続キャッシュ | 複数人運用で破綻しない |
 
 ## 22. 未決事項

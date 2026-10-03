@@ -2,7 +2,7 @@
 
 Project knowledge for Pi. The plugin injects a small discovery index at session start, validates Markdown entries while you edit them, searches them lexically, and bundles a `kb` CLI for CI.
 
-**Scope (v0.1.0):** `kb list`, `tags`, `find`, `search` (lexical), `lint`, `stale`, `dups`, `refs`, `docs`, `bench`, and the `/kb` command are implemented. Embedding and FTS5 search are planned (see [DESIGN.md §21](DESIGN.md#21-実装フェーズ)).
+**Scope (v0.1.0):** `kb list`, `tags`, `find`, `search`, `lint`, `stale`, `dups`, `refs`, `docs`, `bench`, and the `/kb` command are implemented. Search backends are selectable: lexical (default), FTS5, embedding, and hybrid. Embedding needs an OpenAI-compatible endpoint; it is off until configured.
 
 ## What it does
 
@@ -53,7 +53,7 @@ Then conditions, evidence, counterexamples, and uncertainty.
 kb list                 # active entries
 kb tags                 # tag counts
 kb find <tag>...        # AND filter
-kb search "query"       # lexical search
+kb search "query"       # lexical by default; --backend lexical|fts5|embedding|hybrid
 kb lint                 # errors and warnings (exit 1 on errors)
 kb stale                # overdue review_after / old git dates
 kb dups                 # near-duplicate candidates
@@ -62,7 +62,7 @@ kb docs [--check]       # document index generation / drift check
 kb bench <fixture.json> # recall and latency for a fixture set
 ```
 
-Embedding and FTS5 search are planned for a later phase (see [DESIGN.md §21](DESIGN.md#21-実装フェーズ)).
+Search backends are selectable (`search.backend` or `--backend`). An unavailable backend falls back to lexical with a visible reason; `--require-backend` turns that into exit code 3.
 
 ## Configuration
 
@@ -70,4 +70,4 @@ Embedding and FTS5 search are planned for a later phase (see [DESIGN.md §21](DE
 
 ## Privacy
 
-Search is local and lexical. Optional embedding search is planned (Phase 3); when it ships it will send entry text to the endpoint you configure, with the API key read from an environment variable named in the config.
+Search is local and lexical by default. Embedding search is opt-in: it sends entry text and queries to the endpoint you configure, with the API key read from an environment variable named in the config.
