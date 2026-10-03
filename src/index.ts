@@ -17,7 +17,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { buildCatalog, parseEntryFile, removeEntry, rescanCatalog, upsertEntry } from "./catalog.ts";
 import { type KnowledgeConfig, loadConfig } from "./config.ts";
-import { formatSearchHit } from "./format.ts";
+import { formatSearchHit, formatSearchHits } from "./format.ts";
 import { findKnowledgeTarget, type HookContext, type HookOutcome, planEdit, planWrite } from "./hooks.ts";
 import { lintCatalog } from "./lint.ts";
 import { type RenderedIndex, renderIndex } from "./render.ts";
@@ -290,8 +290,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 			{ query: rest.join(" "), tags: [], status: "active", scope: null, limit: 10 },
 			config,
 		);
-		const lines = result.hits.map((hit) => `${hit.id}  ${hit.title}  (${hit.score.toFixed(2)})`);
-		const text = lines.join("\n") || "no matches";
+		const text = formatSearchHits(result.hits, roots.length > 1) || "no matches";
 		return result.fallback ? `${text}\n(fallback: ${result.fallbackReason ?? "unavailable"})` : text;
 	};
 

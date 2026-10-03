@@ -42,3 +42,14 @@ test("a non-lexical backend is reported as a fallback", () => {
 	assert.equal(report.fallback, true);
 	assert.equal(report.backend, "embedding");
 });
+
+test("parseFixtures preserves tags and rejects invalid ones", () => {
+	assert.deepEqual(parseFixtures([{ query: "a", expect: [], tags: ["x"] }]), [{ query: "a", expect: [], tags: ["x"] }]);
+	assert.equal(parseFixtures([{ query: "a", expect: [], tags: [1] }]), null);
+});
+
+test("tag-only fixtures can hit", () => {
+	const entry = makeEntry({ id: "11111111", title: "Unrelated", tags: ["x"], body: "nothing relevant here" });
+	const report = runBench(catalogOf([entry]), DEFAULT_CONFIG, [{ query: "", expect: ["11111111"], tags: ["x"] }], 1);
+	assert.equal(report.recallAt1, 1);
+});

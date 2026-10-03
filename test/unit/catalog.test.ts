@@ -115,3 +115,15 @@ test("rescanCatalog reuses unchanged entries and picks up edits", () => {
 		assert.equal(third.entries[0]?.title, "New");
 	});
 });
+
+test("impossible calendar dates are rejected", () => {
+	const result = parseEntryText(
+		`---\ntitle: T\nreview_after: 2026-02-30\n---\n${BODY}`,
+		"01234567",
+		makeRoot("/k"),
+		"/k/x.md",
+		0,
+		0,
+	);
+	assert.match(result.invalid ?? "", /review_after/);
+});

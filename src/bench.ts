@@ -7,7 +7,10 @@
  * provider call (DESIGN.md §9.4).
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { KnowledgeConfig } from "./config.ts";
+import { formatSearchHit } from "./format.ts";
 import { searchCatalog } from "./search.ts";
 import { estimateTokens } from "./tokens.ts";
 import type { CatalogData } from "./types.ts";
@@ -33,29 +36,61 @@ export interface BenchReport {
 	actualTokens: null;
 }
 
+function toFixture(item: unknown): BenchFixture | null {
+	if (typeof item !== "object" || item === null) return null;
+	const record = item as Record<string, unknown>;
+	const expect = record["expect"];
+	if (typeof record["query"] !== "string" || !Array.isArray(expect) || !expect.every((id) => typeof id === "string")) {
+		return null;
+	}
+	const tags = record["tags"];
+	if (tags !== undefined && (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string"))) return null;
+	return {
+		query: record["query"],
+		expect: expect as string[],
+		...(tags === undefined ? {} : { tags: tags as string[] }),
+	};
+}
+
 export function parseFixtures(value: unknown): BenchFixture[] | null {
 	if (!Array.isArray(value)) return null;
 	const fixtures: BenchFixture[] = [];
 	for (const item of value) {
-		if (typeof item !== "object" || item === null) return null;
-		const record = item as Record<string, unknown>;
-		const expect = record["expect"];
-		if (
-			typeof record["query"] !== "string" ||
-			!Array.isArray(expect) ||
-			!expect.every((id) => typeof id === "string")
-		) {
-			return null;
-		}
-		fixtures.push({ query: record["query"], expect: expect as string[] });
+		const fixture = toFixture(item);
+		if (fixture === null) return null;
+		fixtures.push(fixture);
 	}
 	return fixtures;
+}
+
+export type FixtureLoad = { fixtures: BenchFixture[] } | { error: string };
+
+/** Read and validate a fixture file; shared by the CLI and `/kb bench`. */
+export function loadFixtures(cwd: string, fixturePath: string): FixtureLoad {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(fs.readFileSync(path.resolve(cwd, fixturePath), "utf8"));
+	} catch (error) {
+		return { error: `cannot read ${fixturePath}: ${error instanceof Error ? error.message : String(error)}` };
+	}
+	const fixtures = parseFixtures(parsed);
+	if (fixtures === null) return { error: "fixtures must be [{ query, expect }]" };
+	return { fixtures };
+}
+
+/** Parse `--repeat N` from an argument list; defaults to 5. */
+export function repeatArg(rest: string[]): number {
+	const index = rest.indexOf("--repeat");
+	if (index < 0) return 5;
+	const value = Number(rest[index + 1]);
+	return Number.isFinite(value) && value > 0 ? Math.floor(value) : 5;
 }
 
 function percentile(values: number[], fraction: number): number {
 	if (values.length === 0) return 0;
 	const sorted = [...values].sort((a, b) => a - b);
-	return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0;
+	const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1));
+	return sorted[index] ?? 0;
 }
 
 interface FixtureScore {
@@ -82,7 +117,7 @@ function scoreFixture(
 		latencies.push(Number(process.hrtime.bigint() - start) / 1e6);
 		if (round > 0) continue;
 		rank = result.hits.findIndex((hit) => fixture.expect.includes(hit.id)) + 1;
-		tokens = estimateTokens(result.hits.map((hit) => `${hit.id} ${hit.title}`).join("\n"));
+		tokens = estimateTokens(result.hits.map((hit) => formatSearchHit(hit, false)).join("\n"));
 	}
 	return { rank, tokens };
 }

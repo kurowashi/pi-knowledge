@@ -8,10 +8,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseFrontmatter } from "./frontmatter.ts";
+import { isValidDate } from "./lint.ts";
 import type { CatalogData, EntryRecord, InvalidEntry, ResolvedRoot, Status } from "./types.ts";
 
 export const ID_PATTERN = /^[0-9a-f]{8}$/;
-export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES: readonly Status[] = ["active", "superseded", "deprecated"];
 
 export interface ParseResult {
@@ -79,7 +79,7 @@ function readExtraFields(meta: Record<string, unknown>): ExtraFields | string {
 	if (!supersedes.ok) return "supersedes must be an id";
 	const reviewAfter = optionalString(meta["review_after"]);
 	if (!reviewAfter.ok) return "review_after must be YYYY-MM-DD";
-	if (reviewAfter.value !== null && !DATE_PATTERN.test(reviewAfter.value)) return "review_after must be YYYY-MM-DD";
+	if (reviewAfter.value !== null && !isValidDate(reviewAfter.value)) return "review_after must be YYYY-MM-DD";
 	const source = optionalString(meta["source"]);
 	if (!source.ok) return "source must be text";
 	return { supersedes: supersedes.value, reviewAfter: reviewAfter.value, source: source.value };

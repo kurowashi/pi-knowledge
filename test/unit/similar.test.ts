@@ -30,3 +30,12 @@ test("the threshold is configurable", () => {
 	assert.equal(findDuplicatePairs(catalogOf([a, b]), 0.99).length, 0);
 	assert.equal(findDuplicatePairs(catalogOf([a, b]), 0.1).length, 1);
 });
+
+test("CJK notes are compared with their full token runs", () => {
+	const a = makeEntry({ id: "11111111", title: "認証の設定", body: "外部APIの応答をスキーマ検証する。" });
+	const b = makeEntry({ id: "22222222", title: "認証の設定", body: "外部APIの応答をスキーマ検証する。" });
+	const c = makeEntry({ id: "33333333", title: "別の話題", body: "全く関係のない内容です。" });
+	const pairs = findDuplicatePairs(catalogOf([a, b, c]));
+	assert.equal(pairs.length, 1);
+	assert.equal(pairs[0]?.b.id, "22222222");
+});

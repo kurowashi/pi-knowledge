@@ -25,3 +25,18 @@ test("an unknown id and an empty reference list format cleanly", () => {
 	const empty = { target: makeEntry(), references: [] };
 	assert.equal(formatReferences(empty, "11111111"), "no references");
 });
+
+test("scoped links from another scope resolve to the local id", () => {
+	const target = makeEntry({ id: "11111111", scope: "user" });
+	const linker = makeEntry({ id: "22222222", scope: "project", body: "see [[user:11111111]] for details" });
+	const report = findReferences(catalogOf([target, linker]), "11111111");
+	assert.equal(report.references.length, 1);
+	assert.equal(report.references[0]?.kind, "link");
+});
+
+test("an entry that supersedes and links is reported once", () => {
+	const entry = makeEntry({ id: "22222222", supersedes: "11111111", body: "was [[11111111]] before" });
+	const report = findReferences(catalogOf([makeEntry({ id: "11111111" }), entry]), "11111111");
+	assert.equal(report.references.length, 1);
+	assert.equal(report.references[0]?.kind, "supersedes");
+});

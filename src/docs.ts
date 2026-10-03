@@ -15,6 +15,7 @@ const MAX_DESCRIPTION = 120;
 const BINARY_SNIFF_BYTES = 8192;
 const HEADING_SCAN_LINES = 20;
 const MAX_FAILURE_RATIO = 0.1;
+const MAX_DEPTH = 32;
 
 export interface DocsBuild {
 	text: string;
@@ -116,8 +117,13 @@ function sanitize(value: string): string {
 }
 
 function descriptionOf(text: string): string {
+	let inFence = false;
 	for (const line of text.split(/\r?\n/).slice(0, HEADING_SCAN_LINES)) {
-		if (!line.trimStart().startsWith("#")) continue;
+		if (line.trimStart().startsWith("```")) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence || !line.trimStart().startsWith("#")) continue;
 		const cleaned = sanitize(line.replace(/^#+\s*/, "")).trim();
 		if (cleaned === "") return "";
 		return cleaned.length <= MAX_DESCRIPTION ? cleaned : `${cleaned.slice(0, MAX_DESCRIPTION - 1)}…`;
@@ -159,7 +165,12 @@ function walkDirectory(
 	exclude: RegExp[],
 	skip: Set<string>,
 	state: WalkState,
+	depth: number,
 ): void {
+	if (depth > MAX_DEPTH) {
+		state.warnings.push(`kb docs: max depth reached at ${dir}`);
+		return;
+	}
 	let dirents: fs.Dirent[];
 	try {
 		dirents = fs.readdirSync(dir, { withFileTypes: true });
@@ -173,7 +184,7 @@ function walkDirectory(
 		const full = path.join(dir, dirent.name);
 		if (dirent.isSymbolicLink()) continue;
 		if (dirent.isDirectory()) {
-			walkDirectory(full, root, include, exclude, skip, state);
+			walkDirectory(full, root, include, exclude, skip, state, depth + 1);
 			continue;
 		}
 		if (!dirent.isFile()) continue;
@@ -187,7 +198,7 @@ export function buildDocumentIndex(repoRoot: string, config: KnowledgeConfig): D
 	const exclude = compilePatterns(config.docs.exclude, "exclude", warnings);
 	const generated = toPosix(path.relative(repoRoot, path.resolve(repoRoot, config.docs.path)));
 	const state: WalkState = { entries: [], warnings, matched: 0, failures: 0 };
-	walkDirectory(repoRoot, repoRoot, include, exclude, new Set([generated]), state);
+	walkDirectory(repoRoot, repoRoot, include, exclude, new Set([generated]), state, 0);
 	state.entries.sort((a, b) => a.rel.localeCompare(b.rel));
 	let lines = state.entries.map((entry) =>
 		entry.description === "" ? entry.rel : `${entry.rel} — ${entry.description}`,

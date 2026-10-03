@@ -103,3 +103,23 @@ test("runDocs with no matches and write failures use the documented codes", () =
 		assert.match(failing.stderr, /cannot write/);
 	});
 });
+
+test("headings inside code fences are ignored", () => {
+	withTempDir((root) => {
+		fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+		fs.writeFileSync(path.join(root, "docs", "fence.md"), "```\n# not a heading\n```\n# Real heading\n");
+		const build = buildDocumentIndex(root, config());
+		assert.match(build.text, /fence\.md — Real heading/);
+	});
+});
+
+test("symlinked files are skipped", { skip: process.platform === "win32" }, () => {
+	withTempDir((root) => {
+		fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+		fs.writeFileSync(path.join(root, "docs", "real.md"), "# Real");
+		fs.symlinkSync("real.md", path.join(root, "docs", "link.md"));
+		const build = buildDocumentIndex(root, config());
+		assert.equal(build.count, 1);
+		assert.ok(!build.text.includes("link.md"));
+	});
+});

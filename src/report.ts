@@ -3,9 +3,7 @@
  * thin adapter and the CLI and command surfaces use the same formatters.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { parseFixtures, runBench } from "./bench.ts";
+import { loadFixtures, repeatArg, runBench } from "./bench.ts";
 import type { KnowledgeConfig } from "./config.ts";
 import { runDocs } from "./docs.ts";
 import { formatCatalog, formatIssues, formatTagCounts } from "./format.ts";
@@ -56,14 +54,9 @@ export function commandReport(action: string, rest: string[], ctx: ReportContext
 		bench: () => {
 			const fixturePath = rest.find((arg) => !arg.startsWith("--"));
 			if (fixturePath === undefined) return "usage: /kb bench <fixture.json> [--repeat N]";
-			try {
-				const parsed: unknown = JSON.parse(fs.readFileSync(path.resolve(ctx.cwd, fixturePath), "utf8"));
-				const fixtures = parseFixtures(parsed);
-				if (fixtures === null) return "kb bench: fixtures must be [{ query, expect }]";
-				return JSON.stringify(runBench(catalog, config, fixtures), null, 2);
-			} catch (error) {
-				return `kb bench: cannot read ${fixturePath}: ${error instanceof Error ? error.message : String(error)}`;
-			}
+			const loaded = loadFixtures(ctx.cwd, fixturePath);
+			if ("error" in loaded) return `kb bench: ${loaded.error}`;
+			return JSON.stringify(runBench(catalog, config, loaded.fixtures, repeatArg(rest)), null, 2);
 		},
 	};
 	const handler = handlers[action];

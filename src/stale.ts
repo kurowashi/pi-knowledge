@@ -40,36 +40,64 @@ function gitState(cwd: string): GitState {
 	return { datesAvailable: true, warning: null };
 }
 
-function gitTimestamp(cwd: string, file: string): number | null {
-	const relative = path.relative(cwd, file);
-	const result = spawnSync("git", ["log", "-1", "--format=%ct", "--", relative], {
+function toPosix(value: string): string {
+	return value.split(path.sep).join("/");
+}
+
+/** One `git log` pass: repo-relative path -> newest commit timestamp (seconds). */
+function gitDates(cwd: string): Map<string, number> | null {
+	const result = spawnSync("git", ["log", "--format=%ct", "--name-only"], {
 		cwd,
 		encoding: "utf8",
-		timeout: 5000,
+		timeout: 10_000,
+		maxBuffer: 32 * 1024 * 1024,
 	});
 	if (result.error || result.status !== 0) return null;
-	const value = Number((result.stdout ?? "").trim());
-	return Number.isFinite(value) && value > 0 ? value : null;
+	const dates = new Map<string, number>();
+	let current = 0;
+	for (const line of (result.stdout ?? "").split("\n")) {
+		const trimmed = line.trim();
+		if (trimmed === "") continue;
+		if (/^\d+$/.test(trimmed)) {
+			current = Number(trimmed);
+			continue;
+		}
+		if (current > 0 && !dates.has(trimmed)) dates.set(trimmed, current);
+	}
+	return dates;
+}
+
+function reviewAfterStale(entry: EntryRecord, today: string): StaleEntry | null {
+	if (entry.reviewAfter === null || entry.reviewAfter >= today) return null;
+	return { entry, reason: "review_after", detail: entry.reviewAfter };
+}
+
+function gitStale(
+	entry: EntryRecord,
+	cwd: string,
+	dates: Map<string, number> | null,
+	cutoffSeconds: number,
+): StaleEntry | null {
+	if (dates === null) return null;
+	const timestamp = dates.get(toPosix(path.relative(cwd, entry.path))) ?? null;
+	if (timestamp === null || timestamp >= cutoffSeconds) return null;
+	return { entry, reason: "git_date", detail: new Date(timestamp * 1000).toISOString().slice(0, 10) };
 }
 
 export function staleReport(catalog: CatalogData, config: KnowledgeConfig, cwd: string, now: Date): StaleReport {
 	const today = now.toISOString().slice(0, 10);
 	const cutoffSeconds = Math.floor((now.getTime() - config.stale.days * 86_400_000) / 1000);
 	const state = gitState(cwd);
+	const dates = state.datesAvailable ? gitDates(cwd) : null;
+	const warnings = state.warning === null ? [] : [state.warning];
+	if (state.datesAvailable && dates === null) warnings.push("git log failed; git dates skipped");
 	const entries: StaleEntry[] = [];
 	for (const entry of catalog.entries) {
 		if (entry.status !== "active") continue;
-		if (entry.reviewAfter !== null && entry.reviewAfter < today) {
-			entries.push({ entry, reason: "review_after", detail: entry.reviewAfter });
-			continue;
-		}
-		if (!state.datesAvailable) continue;
-		const timestamp = gitTimestamp(cwd, entry.path);
-		if (timestamp !== null && timestamp < cutoffSeconds) {
-			entries.push({ entry, reason: "git_date", detail: new Date(timestamp * 1000).toISOString().slice(0, 10) });
-		}
+		const stale = reviewAfterStale(entry, today) ?? gitStale(entry, cwd, dates, cutoffSeconds);
+		if (stale !== null) entries.push(stale);
 	}
-	return { entries, warnings: state.warning === null ? [] : [state.warning] };
+	return { entries, warnings };
 }
 
 export function formatStale(report: StaleReport): string {

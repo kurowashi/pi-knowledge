@@ -129,3 +129,17 @@ test("bench reads fixtures and validates them", () => {
 		assert.equal(execute(["bench", "bad.json"], cwd).code, 2);
 	});
 });
+
+test("search accepts --scope and warns on unknown status", () => {
+	project((cwd) => {
+		const projectScope = execute(["search", "alpha", "--scope", "project"], cwd);
+		assert.equal(projectScope.code, 0);
+		assert.match(projectScope.stdout, /Alpha/);
+		const userScope = execute(["search", "alpha", "--scope", "user"], cwd);
+		assert.equal(userScope.code, 0);
+		assert.equal(userScope.stdout, "");
+		const bad = execute(["search", "alpha", "--status", "Active"], cwd);
+		assert.equal(bad.code, 0);
+		assert.match(bad.stderr, /unknown status/);
+	});
+});

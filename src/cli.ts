@@ -7,10 +7,8 @@
  * or docs read/write error, 3 a required backend is unavailable (Phase 3).
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { parseFixtures, runBench } from "./bench.ts";
+import { loadFixtures, repeatArg, runBench } from "./bench.ts";
 import { buildCatalog } from "./catalog.ts";
 import { type KnowledgeConfig, loadConfig } from "./config.ts";
 import { runDocs } from "./docs.ts";
@@ -21,7 +19,7 @@ import { resolveRoots } from "./roots.ts";
 import { searchCatalog } from "./search.ts";
 import { findDuplicatePairs, formatDuplicatePairs } from "./similar.ts";
 import { formatStale, staleReport } from "./stale.ts";
-import type { CatalogData, ResolvedRoot, Status } from "./types.ts";
+import type { CatalogData, ResolvedRoot, Scope, Status } from "./types.ts";
 
 export interface CliResult {
 	code: number;
@@ -30,7 +28,7 @@ export interface CliResult {
 }
 
 export const CLI_USAGE =
-	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] | lint | stale | dups | refs <id> | docs [--check] | bench <fixture.json> [--repeat N]>";
+	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] [--scope S] | lint | stale | dups | refs <id> | docs [--check] | bench <fixture.json> [--repeat N]>";
 
 const STATUSES: readonly (Status | "any")[] = ["active", "any", "superseded", "deprecated"];
 
@@ -39,10 +37,8 @@ interface SearchArgs {
 	json: boolean;
 	limit: number;
 	status: Status | "any";
-}
-
-function message(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+	scope: Scope | null;
+	statusWarning: string | null;
 }
 
 function appendNote(stderr: string, note: string): string {
@@ -59,13 +55,18 @@ function clampLimit(value: string | undefined): number {
 	return Number.isFinite(parsed) ? Math.max(1, Math.min(50, Math.floor(parsed))) : 10;
 }
 
-function parseStatus(value: string | undefined): Status | "any" {
-	if (value !== undefined && (STATUSES as readonly string[]).includes(value)) return value as Status | "any";
-	return "active";
+function parseStatus(value: string | undefined): { status: Status | "any"; warning: string | null } {
+	if (value === undefined) return { status: "active", warning: null };
+	if ((STATUSES as readonly string[]).includes(value)) return { status: value as Status | "any", warning: null };
+	return { status: "active", warning: `kb: unknown status ${value}; using active` };
+}
+
+function parseScope(value: string | undefined): Scope | null {
+	return value === "project" || value === "user" ? value : null;
 }
 
 function parseSearchArgs(rest: string[]): SearchArgs {
-	const args: SearchArgs = { query: "", json: false, limit: 10, status: "active" };
+	const args: SearchArgs = { query: "", json: false, limit: 10, status: "active", scope: null, statusWarning: null };
 	const words: string[] = [];
 	for (let i = 0; i < rest.length; i++) {
 		const arg = rest[i] ?? "";
@@ -74,7 +75,12 @@ function parseSearchArgs(rest: string[]): SearchArgs {
 			args.limit = clampLimit(rest[i + 1]);
 			i++;
 		} else if (arg === "--status") {
-			args.status = parseStatus(rest[i + 1]);
+			const parsed = parseStatus(rest[i + 1]);
+			args.status = parsed.status;
+			args.statusWarning = parsed.warning;
+			i++;
+		} else if (arg === "--scope") {
+			args.scope = parseScope(rest[i + 1]);
 			i++;
 		} else words.push(arg);
 	}
@@ -108,12 +114,17 @@ function runSearch(
 	if (args.query.trim() === "") return usageError(stderr);
 	const result = searchCatalog(
 		catalog,
-		{ query: args.query, tags: [], status: args.status, scope: null, limit: args.limit },
+		{ query: args.query, tags: [], status: args.status, scope: args.scope, limit: args.limit },
 		config,
 	);
-	const note = result.fallback ? `kb: backend ${config.search.backend} unavailable; used lexical` : "";
+	const notes = [
+		result.fallback ? `kb: backend ${config.search.backend} unavailable; used lexical` : "",
+		args.statusWarning ?? "",
+	]
+		.filter((note) => note !== "")
+		.join("\n");
 	const stdout = args.json ? JSON.stringify(result, null, 2) : formatSearchHits(result.hits, roots.length > 1);
-	return { code: 0, stdout, stderr: appendNote(stderr, note) };
+	return { code: 0, stdout, stderr: appendNote(stderr, notes) };
 }
 
 function runLint(catalog: CatalogData, roots: ResolvedRoot[], cwd: string, stderr: string): CliResult {
@@ -140,13 +151,6 @@ function runDocsCommand(rest: string[], cwd: string, config: KnowledgeConfig, st
 	return { code: outcome.code, stdout: outcome.stdout, stderr: appendNote(stderr, outcome.stderr) };
 }
 
-function repeatArg(rest: string[]): number {
-	const index = rest.indexOf("--repeat");
-	if (index < 0) return 5;
-	const value = Number(rest[index + 1]);
-	return Number.isFinite(value) && value > 0 ? Math.floor(value) : 5;
-}
-
 function runBenchCommand(
 	rest: string[],
 	catalog: CatalogData,
@@ -156,21 +160,10 @@ function runBenchCommand(
 ): CliResult {
 	const fixturePath = rest.find((arg) => !arg.startsWith("--"));
 	if (fixturePath === undefined) return usageError(stderr);
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(fs.readFileSync(path.resolve(cwd, fixturePath), "utf8"));
-	} catch (error) {
-		return {
-			code: 2,
-			stdout: "",
-			stderr: appendNote(stderr, `kb bench: cannot read ${fixturePath}: ${message(error)}`),
-		};
-	}
-	const fixtures = parseFixtures(parsed);
-	if (fixtures === null) {
-		return { code: 2, stdout: "", stderr: appendNote(stderr, "kb bench: fixtures must be [{ query, expect }]") };
-	}
-	return { code: 0, stdout: JSON.stringify(runBench(catalog, config, fixtures, repeatArg(rest)), null, 2), stderr };
+	const loaded = loadFixtures(cwd, fixturePath);
+	if ("error" in loaded) return { code: 2, stdout: "", stderr: appendNote(stderr, `kb bench: ${loaded.error}`) };
+	const report = runBench(catalog, config, loaded.fixtures, repeatArg(rest));
+	return { code: 0, stdout: JSON.stringify(report, null, 2), stderr };
 }
 
 export function execute(argv: string[], cwd: string): CliResult {

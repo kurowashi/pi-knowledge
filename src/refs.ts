@@ -20,13 +20,21 @@ export function findReferences(catalog: CatalogData, id: string): RefReport {
 	const target = catalog.byId.get(id) ?? null;
 	const references: Reference[] = [];
 	for (const entry of catalog.entries) {
-		if (entry.supersedes === id) references.push({ from: entry, kind: "supersedes" });
-		const links = extractLinks(entry.body);
-		if (links.includes(id) || links.includes(`${entry.scope}:${id}`)) {
+		if (entry.supersedes === id) {
+			references.push({ from: entry, kind: "supersedes" });
+			continue;
+		}
+		if (extractLinks(entry.body).some((link) => linkMatches(link, id))) {
 			references.push({ from: entry, kind: "link" });
 		}
 	}
 	return { target, references };
+}
+
+/** `[[id]]` and `[[scope:id]]` both reference the local id. */
+function linkMatches(link: string, id: string): boolean {
+	const colon = link.indexOf(":");
+	return colon === -1 ? link === id : link.slice(colon + 1) === id;
 }
 
 export function formatReferences(report: RefReport, id: string): string {
