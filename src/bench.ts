@@ -191,16 +191,23 @@ async function measure(
 ): Promise<Measurement> {
 	const acc: Accumulator = { hit1: 0, hit3: 0, hit5: 0, reciprocalRank: 0, tokens: 0 };
 	const latencies: number[] = [];
-	const firstStart = process.hrtime.bigint();
 	let indexBuildMs = 0;
 	let fallback = false;
 	let fallbackReason: FallbackReason | null = null;
 	let actualTokens: number | null = null;
+	const first = fixtures[0];
+	if (first !== undefined) {
+		const start = process.hrtime.bigint();
+		await service.search(
+			{ query: first.query, tags: first.tags ?? [], status: "active", scope: null, limit: 10 },
+			backend,
+		);
+		indexBuildMs = Number(process.hrtime.bigint() - start) / 1e6;
+	}
 	for (let i = 0; i < fixtures.length; i++) {
 		const fixture = fixtures[i];
 		if (fixture === undefined) continue;
 		const measured = await measureFixture(service, fixture, rounds, backend, latencies);
-		if (i === 0) indexBuildMs = Number(process.hrtime.bigint() - firstStart) / 1e6;
 		addScore(acc, measured.rank, measured.tokens);
 		fallback = measured.fallback;
 		fallbackReason = measured.fallbackReason;

@@ -6,7 +6,6 @@
  * silently pretending to be semantic (DESIGN.md §9).
  */
 
-import type { KnowledgeConfig } from "./config.ts";
 import { estimateTokens } from "./tokens.ts";
 import type {
 	Backend,
@@ -82,13 +81,12 @@ export function toHit(
 		hit.fallback = true;
 		hit.fallbackReason = fallbackReason ?? "unavailable";
 	}
+	const excerpt = entry.body.replace(/\s+/g, " ").trim();
+	if (excerpt !== "") hit.excerpt = excerpt.length <= 200 ? excerpt : `${excerpt.slice(0, 199)}…`;
 	return hit;
 }
 
-export function searchCatalog(catalog: CatalogData, options: SearchOptions, config: KnowledgeConfig): SearchResult {
-	const requested = config.search.backend;
-	const fallback = requested !== "lexical";
-	const fallbackReason: FallbackReason | null = fallback ? "unavailable" : null;
+export function searchCatalog(catalog: CatalogData, options: SearchOptions): SearchResult {
 	const terms = tokenize(options.query);
 	const limit = Math.max(1, Math.min(50, Math.floor(options.limit)));
 	const hits: SearchHit[] = [];
@@ -96,10 +94,10 @@ export function searchCatalog(catalog: CatalogData, options: SearchOptions, conf
 		if (!matchesFilters(entry, options)) continue;
 		const score = scoreEntry(entry, terms);
 		if (terms.length > 0 && score <= 0) continue;
-		hits.push(toHit(entry, score, "lexical", fallback, fallbackReason));
+		hits.push(toHit(entry, score, "lexical", false, null));
 	}
 	hits.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-	return { hits: hits.slice(0, limit), backend: "lexical", fallback, fallbackReason };
+	return { hits: hits.slice(0, limit), backend: "lexical", fallback: false, fallbackReason: null };
 }
 
 /** Keep model-facing search output under the on-demand token cap. */

@@ -239,9 +239,10 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 
 	const refreshAfter = (toolName: string, input: Record<string, unknown>, ctx: ExtensionContext): void => {
 		if (catalog === null) return;
+		const before = catalog;
 		if (toolName === "write" || toolName === "edit") refreshTarget(input["path"], ctx);
 		else if (toolName === "bash") catalog = rescanCatalog(catalog, roots, warnings);
-		if (config !== null && catalog !== null) service = new SearchService(catalog, config);
+		if (config !== null && catalog !== null && catalog !== before) service = new SearchService(catalog, config);
 	};
 
 	pi.on("tool_result", (event, ctx) => {

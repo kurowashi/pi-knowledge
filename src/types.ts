@@ -73,6 +73,8 @@ export interface SearchHit {
 	status: Status;
 	source: string | null;
 	path: string;
+	/** Body excerpt (≤200 chars) for model-facing results. */
+	excerpt?: string;
 	score: number;
 	backend: Backend;
 	fallback?: boolean;

@@ -31,7 +31,8 @@ export function formatIssues(issues: Issue[]): string {
 export function formatSearchHit(hit: SearchHit, multiRoot: boolean): string {
 	const label = multiRoot ? `${hit.scope}:${hit.id}` : hit.id;
 	const when = hit.when.length > 0 ? ` — ${hit.when.join(" / ")}` : "";
-	return `${label}  ${hit.title}${when}\n  path: ${hit.path}`;
+	const excerpt = hit.excerpt === undefined ? "" : `\n  ${hit.excerpt}`;
+	return `${label}  ${hit.title}${when}${excerpt}\n  path: ${hit.path}`;
 }
 
 export function formatSearchHits(hits: SearchHit[], multiRoot: boolean): string {

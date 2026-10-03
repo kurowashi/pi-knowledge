@@ -50,7 +50,12 @@ async function parseResponse(response: Response, count: number): Promise<Embeddi
 	if (response.status === 429) return { ok: false, reason: "rate_limited" };
 	if (response.status >= 500) return { ok: false, reason: "server" };
 	if (!response.ok) return { ok: false, reason: "protocol" };
-	const json = (await response.json()) as EmbeddingResponse;
+	let json: EmbeddingResponse;
+	try {
+		json = (await response.json()) as EmbeddingResponse;
+	} catch {
+		return { ok: false, reason: "protocol" };
+	}
 	const vectors = (json.data ?? [])
 		.map((item) => item.embedding)
 		.filter((vector): vector is number[] => Array.isArray(vector));

@@ -71,7 +71,7 @@ export function loadSqlite(importer: DynamicImport = () => import("node:sqlite")
 
 export class FtsIndex {
 	private readonly catalog: CatalogData;
-	private db: SqliteDb | null | undefined;
+	private dbPromise: Promise<SqliteDb | null> | null = null;
 	private entriesByKey = new Map<string, EntryRecord>();
 
 	constructor(catalog: CatalogData) {
@@ -93,21 +93,34 @@ export class FtsIndex {
 				.slice(0, options.limit)
 				.map((entry) => toHit(entry, 1, "fts5", false, null));
 		}
-		const rows = db
-			.prepare("SELECT key FROM entries WHERE entries MATCH ? ORDER BY bm25(entries) LIMIT ?")
-			.all(matchQuery(terms), Math.max(1, options.limit)) as unknown as FtsRow[];
+		const rows = this.queryRows(db, terms, options);
+		if (rows === null) return null;
 		const hits: SearchHit[] = [];
 		for (let index = 0; index < rows.length; index++) {
 			const entry = this.entriesByKey.get(rows[index]?.key ?? "");
 			if (entry === undefined || !matchesFilters(entry, options)) continue;
-			hits.push(toHit(entry, 1 / (1 + index), "fts5", false, null));
+			hits.push(toHit(entry, 1 / (1 + hits.length), "fts5", false, null));
+			if (hits.length >= options.limit) break;
 		}
 		return hits;
 	}
 
-	private async index(): Promise<SqliteDb | null> {
-		if (this.db !== undefined) return this.db;
-		this.db = null;
+	private queryRows(db: SqliteDb, terms: string[], options: SearchOptions): FtsRow[] | null {
+		try {
+			return db
+				.prepare("SELECT key FROM entries WHERE entries MATCH ? ORDER BY bm25(entries) LIMIT ?")
+				.all(matchQuery(terms), Math.max(options.limit * 5, 50)) as unknown as FtsRow[];
+		} catch {
+			return null;
+		}
+	}
+
+	private index(): Promise<SqliteDb | null> {
+		this.dbPromise ??= this.buildIndex();
+		return this.dbPromise;
+	}
+
+	private async buildIndex(): Promise<SqliteDb | null> {
 		const module = await loadSqlite();
 		if (module === null) return null;
 		try {
@@ -121,10 +134,8 @@ export class FtsIndex {
 				insert.run(key, ftsDocument(entry));
 			}
 			this.entriesByKey = byKey;
-			this.db = db;
 			return db;
 		} catch {
-			this.db = null;
 			return null;
 		}
 	}

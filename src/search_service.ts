@@ -29,6 +29,7 @@ export class SearchService {
 	private readonly config: KnowledgeConfig;
 	private readonly fts: FtsIndex;
 	private embeddingVectors: Map<string, number[]> | null = null;
+	private embeddingIndexPromise: Promise<FallbackReason | null> | null = null;
 	private lastTokens: number | null = null;
 
 	constructor(catalog: CatalogData, config: KnowledgeConfig) {
@@ -58,11 +59,15 @@ export class SearchService {
 
 	async search(options: SearchOptions, requested: Backend): Promise<SearchResult> {
 		this.lastTokens = null;
-		if (requested === "lexical") return searchCatalog(this.catalog, options, this.config);
+		if (requested === "lexical") return searchCatalog(this.catalog, options);
 		if (requested === "fts5") {
 			const hits = await this.fts.search(options);
 			if (hits === null) return this.fallback(options, "unavailable");
 			return { hits, backend: "fts5", fallback: false, fallbackReason: null };
+		}
+		if (options.query.trim() === "") {
+			// Tag/filter-only searches have no semantic signal: lexical filters are the honest backend.
+			return searchCatalog(this.catalog, options);
 		}
 		if (requested === "embedding") {
 			const embedded = await this.embeddingHits(options);
@@ -74,7 +79,7 @@ export class SearchService {
 	}
 
 	private fallback(options: SearchOptions, reason: FallbackReason): SearchResult {
-		const lexical = searchCatalog(this.catalog, options, this.config);
+		const lexical = searchCatalog(this.catalog, options);
 		this.lastTokens = null;
 		return { hits: lexical.hits, backend: "lexical", fallback: true, fallbackReason: reason };
 	}
@@ -85,6 +90,14 @@ export class SearchService {
 	}
 
 	private async embeddingIndex(): Promise<FallbackReason | null> {
+		if (this.embeddingVectors !== null) return null;
+		if (this.embeddingIndexPromise === null) this.embeddingIndexPromise = this.buildEmbeddingIndex();
+		const result = await this.embeddingIndexPromise;
+		if (result !== null) this.embeddingIndexPromise = null;
+		return result;
+	}
+
+	private async buildEmbeddingIndex(): Promise<FallbackReason | null> {
 		if (this.embeddingVectors !== null) return null;
 		const entries = this.catalog.entries;
 		if (entries.length === 0) {
@@ -107,12 +120,7 @@ export class SearchService {
 		return null;
 	}
 
-	private async embeddingHits(options: SearchOptions): Promise<EmbeddingHits | { reason: FallbackReason }> {
-		const indexFailure = await this.embeddingIndex();
-		if (indexFailure !== null) return { reason: indexFailure };
-		const queryResult = await embedTexts(this.config.search.embedding, [options.query]);
-		if (!queryResult.ok) return { reason: queryResult.reason };
-		const queryVector = queryResult.vectors[0] ?? [];
+	private rankEmbeddingHits(queryVector: number[], options: SearchOptions): SearchHit[] {
 		const vectors = this.embeddingVectors ?? new Map<string, number[]>();
 		const hits: SearchHit[] = [];
 		for (const entry of this.catalog.entries) {
@@ -124,11 +132,22 @@ export class SearchService {
 			hits.push(toHit(entry, Math.min(1, (similarity + 1) / 2), "embedding", false, null));
 		}
 		hits.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-		return { hits: hits.slice(0, Math.max(1, options.limit)), tokens: queryResult.tokens };
+		return hits.slice(0, Math.max(1, options.limit));
+	}
+
+	private async embeddingHits(options: SearchOptions): Promise<EmbeddingHits | { reason: FallbackReason }> {
+		const indexFailure = await this.embeddingIndex();
+		if (indexFailure !== null) return { reason: indexFailure };
+		const queryResult = await embedTexts(this.config.search.embedding, [options.query]);
+		if (!queryResult.ok) return { reason: queryResult.reason };
+		const queryVector = queryResult.vectors[0] ?? [];
+		const expected = firstDimension(this.embeddingVectors);
+		if (expected > 0 && queryVector.length !== expected) return { reason: "protocol" };
+		return { hits: this.rankEmbeddingHits(queryVector, options), tokens: queryResult.tokens };
 	}
 
 	private async hybrid(options: SearchOptions): Promise<SearchResult> {
-		const lexical = searchCatalog(this.catalog, options, this.config);
+		const lexical = searchCatalog(this.catalog, options);
 		const embedded = await this.embeddingHits(options);
 		if ("reason" in embedded) {
 			this.lastTokens = null;
@@ -142,6 +161,12 @@ export class SearchService {
 			fallbackReason: null,
 		};
 	}
+}
+
+function firstDimension(vectors: Map<string, number[]> | null): number {
+	if (vectors === null) return 0;
+	for (const vector of vectors.values()) return vector.length;
+	return 0;
 }
 
 function fuse(lexical: SearchHit[], embedded: SearchHit[], limit: number): SearchHit[] {
@@ -158,7 +183,8 @@ function fuse(lexical: SearchHit[], embedded: SearchHit[], limit: number): Searc
 	};
 	add(lexical);
 	add(embedded);
-	const best = Math.max(...scores.values(), 1);
+	if (scores.size === 0) return [];
+	const best = Math.max(...scores.values());
 	return [...scores.entries()]
 		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
 		.slice(0, Math.max(1, limit))

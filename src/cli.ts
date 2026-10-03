@@ -41,6 +41,7 @@ interface SearchArgs {
 	status: Status | "any";
 	statusWarning: string | null;
 	scope: Scope | null;
+	scopeWarning: string | null;
 	backend: Backend | null;
 	backendWarning: string | null;
 	requireBackend: boolean;
@@ -66,8 +67,10 @@ function parseStatus(value: string | undefined): { status: Status | "any"; warni
 	return { status: "active", warning: `kb: unknown status ${value}; using active` };
 }
 
-function parseScope(value: string | undefined): Scope | null {
-	return value === "project" || value === "user" ? value : null;
+function parseScope(value: string | undefined): { scope: Scope | null; warning: string | null } {
+	if (value === undefined) return { scope: null, warning: null };
+	if (value === "project" || value === "user") return { scope: value, warning: null };
+	return { scope: null, warning: `kb: unknown scope ${value}; searching all scopes` };
 }
 
 interface ParseState {
@@ -96,7 +99,9 @@ function applyFlag(state: ParseState, rest: string[], index: number): number {
 		return index + 1;
 	}
 	if (arg === "--scope") {
-		state.args.scope = parseScope(rest[index + 1]);
+		const parsed = parseScope(rest[index + 1]);
+		state.args.scope = parsed.scope;
+		state.args.scopeWarning = parsed.warning;
 		return index + 1;
 	}
 	if (arg === "--backend") {
@@ -118,6 +123,7 @@ function parseSearchArgs(rest: string[]): SearchArgs {
 			status: "active",
 			statusWarning: null,
 			scope: null,
+			scopeWarning: null,
 			backend: null,
 			backendWarning: null,
 			requireBackend: false,
@@ -163,6 +169,7 @@ async function runSearch(
 			? `kb: backend ${requested} unavailable; used lexical (${result.fallbackReason ?? "unavailable"})`
 			: "",
 		args.statusWarning ?? "",
+		args.scopeWarning ?? "",
 		args.backendWarning ?? "",
 	]
 		.filter((note) => note !== "")
