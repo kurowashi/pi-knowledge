@@ -7,6 +7,8 @@
  * index is reused only while its recorded fingerprint matches the catalog.
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { matchesFilters, toHit, tokenize } from "./search.ts";
 import type { CatalogData, EntryRecord, SearchHit, SearchOptions } from "./types.ts";
 
@@ -77,6 +79,14 @@ export interface FtsIndexOptions {
 	fingerprint?: string | null;
 }
 
+function closeQuietly(db: SqliteDb): void {
+	try {
+		db.close();
+	} catch {
+		// Already closed or unusable; the caller falls back to an in-memory index.
+	}
+}
+
 export class FtsIndex {
 	private readonly catalog: CatalogData;
 	private readonly dbPath: string | null;
@@ -145,8 +155,14 @@ export class FtsIndex {
 
 	private openCachedDb(module: SqliteModule): SqliteDb | null {
 		if (this.dbPath === null || this.fingerprint === null) return null;
+		let db: SqliteDb;
 		try {
-			const db = new module.DatabaseSync(this.dbPath);
+			fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
+			db = new module.DatabaseSync(this.dbPath);
+		} catch {
+			return null;
+		}
+		try {
 			db.exec("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)");
 			db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS entries USING fts5(key UNINDEXED, body)");
 			const rows = db.prepare("SELECT value FROM meta WHERE key = 'fingerprint'").all() as unknown as Array<{
@@ -159,6 +175,7 @@ export class FtsIndex {
 			db.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES ('fingerprint', ?)").run(this.fingerprint);
 			return db;
 		} catch {
+			closeQuietly(db);
 			return null;
 		}
 	}

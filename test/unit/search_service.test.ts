@@ -207,3 +207,20 @@ test("team scope filters entries", async () => {
 	const result = await service.search(searchOptions({ scope: "team" }), "lexical");
 	assert.equal(result.hits[0]?.id, "11111111");
 });
+
+test("FTS5 index cache is created and reused when available", async (t) => {
+	await withCacheDir(async (cwd) => {
+		const catalog = catalogOf([makeEntry({ id: "11111111", title: "Alpha" })]);
+		const cache = { cwd, enabled: true };
+		const first = new SearchService(catalog, DEFAULT_CONFIG, cache);
+		if (!(await first.status("fts5")).available) {
+			t.skip("FTS5 is unavailable in this Node build");
+			return;
+		}
+		await first.search(searchOptions(), "fts5");
+		assert.ok(fs.existsSync(path.join(cwd, ".pi", "knowledge-fts.sqlite")));
+		const result = await new SearchService(catalog, DEFAULT_CONFIG, cache).search(searchOptions(), "fts5");
+		assert.equal(result.backend, "fts5");
+		assert.equal(result.hits[0]?.id, "11111111");
+	});
+});
