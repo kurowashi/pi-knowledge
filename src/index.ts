@@ -1,0 +1,381 @@
+/**
+ * pi-knowledge extension entry.
+ *
+ * - `session_start`: load config, resolve roots, build the catalog, freeze the
+ *   injected index, and report lint warnings.
+ * - `before_agent_start`: re-apply the frozen index section every run, and
+ *   optionally add a recall hint.
+ * - `tool_call`: normalize new-entry paths (id assignment) and validate writes.
+ * - `tool_result`: refresh the catalog after write/edit/bash and surface notes.
+ *
+ * The model-facing surface is `kb_search` plus the `/kb` command. No write
+ * tools are added (DESIGN.md §14).
+ */
+
+import * as path from "node:path";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { buildCatalog, parseEntryFile, removeEntry, rescanCatalog, upsertEntry } from "./catalog.ts";
+import { type KnowledgeConfig, loadConfig } from "./config.ts";
+import { findKnowledgeTarget, type HookContext, type HookOutcome, planEdit, planWrite } from "./hooks.ts";
+import { lintCatalog } from "./lint.ts";
+import { type RenderedIndex, renderIndex } from "./render.ts";
+import { resolveRoots } from "./roots.ts";
+import { capSearchText, scoreEntry, searchCatalog, tokenize } from "./search.ts";
+import type { CatalogData, Issue, ResolvedRoot, SearchHit, SearchOptions, Status } from "./types.ts";
+
+const RECALL_LIMIT = 3;
+const SEARCH_CONTENT_TOKENS = 3000;
+const COMMAND_OUTPUT_LIMIT = 8000;
+const CAPTURE_PROMPT = [
+	"Distill reusable knowledge from this session into the project knowledge base.",
+	"Search first with kb_search, then write only self-contained entries that are not already covered.",
+	"Use the write tool with a descriptive filename; the plugin assigns the entry id.",
+	"Follow the knowledge-curation skill: conclusion first, then conditions, evidence, counterexamples, and uncertainty.",
+].join("\n");
+
+function message(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function cap(text: string, limit: number): string {
+	return text.length <= limit ? text : `${text.slice(0, limit)}\n… (truncated)`;
+}
+
+function issueCounts(issues: Issue[]): { errors: number; warnings: number } {
+	let errors = 0;
+	let warnings = 0;
+	for (const issue of issues) {
+		if (issue.level === "error") errors++;
+		else warnings++;
+	}
+	return { errors, warnings };
+}
+
+function formatHit(hit: SearchHit, multiRoot: boolean): string {
+	const label = multiRoot ? `${hit.scope}:${hit.id}` : hit.id;
+	const when = hit.when.length > 0 ? ` — ${hit.when.join(" / ")}` : "";
+	return `${label}  ${hit.title}${when}\n  path: ${hit.path}`;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toEdits(value: unknown): Array<{ oldText: string; newText: string }> | null {
+	if (!Array.isArray(value)) return null;
+	const edits: Array<{ oldText: string; newText: string }> = [];
+	for (const item of value) {
+		if (!isObject(item) || typeof item["oldText"] !== "string" || typeof item["newText"] !== "string") return null;
+		edits.push({ oldText: item["oldText"], newText: item["newText"] });
+	}
+	return edits;
+}
+
+function countTags(catalog: CatalogData): string {
+	const counts = new Map<string, number>();
+	for (const entry of catalog.entries) {
+		for (const tag of entry.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+	}
+	const lines = [...counts.entries()]
+		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+		.map(([tag, count]) => `${tag} (${count})`);
+	return lines.join("\n") || "no tags";
+}
+
+export default function knowledgeExtension(pi: ExtensionAPI): void {
+	let config: KnowledgeConfig | null = null;
+	let roots: ResolvedRoot[] = [];
+	let catalog: CatalogData | null = null;
+	let rendered: RenderedIndex | null = null;
+	let section = "";
+	let warnings: string[] = [];
+	const notesByCall = new Map<string, string[]>();
+	const recalled = new Set<string>();
+
+	const notify = (ctx: ExtensionContext, text: string, level: "info" | "warning"): void => {
+		if (ctx.hasUI) ctx.ui.notify(text, level);
+	};
+
+	const hookContext = (ctx: ExtensionContext): HookContext => ({
+		cwd: ctx.cwd,
+		roots,
+		catalog: catalog ?? { entries: [], byId: new Map(), invalid: [], collisions: new Map() },
+		enforce: config?.write.enforce ?? "block",
+		now: new Date(),
+	});
+
+	const announceWarnings = (ctx: ExtensionContext): void => {
+		if (warnings.length === 0) return;
+		const [first, ...rest] = warnings;
+		notify(ctx, `knowledge: ${first ?? ""}${rest.length > 0 ? ` (+${rest.length} more)` : ""}`, "warning");
+	};
+
+	const reload = (ctx: ExtensionContext): void => {
+		const loaded = loadConfig(ctx.cwd, ctx.isProjectTrusted());
+		config = loaded.config;
+		warnings = loaded.warnings;
+		recalled.clear();
+		notesByCall.clear();
+		rendered = null;
+		section = "";
+		if (!config.enabled) {
+			roots = [];
+			catalog = null;
+			return;
+		}
+		roots = resolveRoots(ctx.cwd, config.roots, warnings);
+		catalog = buildCatalog(roots, warnings);
+		rendered = renderIndex(catalog, roots, config, ctx.model?.contextWindow ?? null);
+		section = config.injection.enabled && roots.length > 0 ? rendered.text : "";
+		const counts = issueCounts(lintCatalog(catalog, roots, ctx.cwd, new Date()));
+		if (counts.errors > 0 || counts.warnings > 0) {
+			notify(ctx, `knowledge: ${counts.errors} errors, ${counts.warnings} warnings (run /kb lint)`, "warning");
+		}
+		announceWarnings(ctx);
+	};
+
+	pi.on("session_start", (_event, ctx) => {
+		try {
+			reload(ctx);
+		} catch (error) {
+			config = null;
+			catalog = null;
+			section = "";
+			notify(ctx, `knowledge: failed to load: ${message(error)}`, "warning");
+		}
+	});
+
+	const recallHint = (
+		prompt: string,
+	): { message: { customType: string; content: string; display: boolean } } | undefined => {
+		if (config?.recall.mode !== "hint" || catalog === null) return undefined;
+		const terms = tokenize(prompt);
+		if (terms.length === 0) return undefined;
+		const hits = catalog.entries
+			.filter((entry) => entry.status === "active" && !recalled.has(`${entry.scope}:${entry.id}`))
+			.map((entry) => ({ entry, score: scoreEntry(entry, terms) }))
+			.filter((hit) => hit.score > 0)
+			.sort((a, b) => b.score - a.score || a.entry.id.localeCompare(b.entry.id))
+			.slice(0, RECALL_LIMIT);
+		if (hits.length === 0) return undefined;
+		const labels = hits.map((hit) => {
+			recalled.add(`${hit.entry.scope}:${hit.entry.id}`);
+			return roots.length > 1 ? `${hit.entry.scope}:${hit.entry.id}` : hit.entry.id;
+		});
+		return {
+			message: {
+				customType: "knowledge_recall",
+				content: `Possibly relevant knowledge: ${labels.join(", ")}`,
+				display: false,
+			},
+		};
+	};
+
+	pi.on("before_agent_start", (event, _ctx) => {
+		if (section) event.systemPromptOptions.sections["knowledge_index"] = section;
+		else delete event.systemPromptOptions.sections["knowledge_index"];
+		return recallHint(event.prompt);
+	});
+
+	const planWriteCall = (ctx: ExtensionContext, input: Record<string, unknown>): HookOutcome | null => {
+		if (typeof input["path"] !== "string" || typeof input["content"] !== "string") return null;
+		const outcome = planWrite({ path: input["path"], content: input["content"] }, hookContext(ctx));
+		if (outcome.allow && outcome.path !== undefined) input["path"] = outcome.path;
+		return outcome;
+	};
+
+	const planEditCall = (ctx: ExtensionContext, input: Record<string, unknown>): HookOutcome | null => {
+		if (typeof input["path"] !== "string") return null;
+		const edits = toEdits(input["edits"]);
+		if (edits === null) return null;
+		return planEdit({ path: input["path"], edits }, hookContext(ctx));
+	};
+
+	const planCall = (ctx: ExtensionContext, toolName: string, input: Record<string, unknown>): HookOutcome | null => {
+		if (toolName === "write") return planWriteCall(ctx, input);
+		if (toolName === "edit") return planEditCall(ctx, input);
+		return null;
+	};
+
+	pi.on("tool_call", (event, ctx) => {
+		if (config === null || catalog === null || !config.enabled) return;
+		const outcome = planCall(ctx, event.toolName, event.input as Record<string, unknown>);
+		if (outcome === null) return;
+		if (!outcome.allow) return { block: true, reason: outcome.reason ?? "blocked by pi-knowledge" };
+		if (outcome.notes.length > 0) notesByCall.set(event.toolCallId, outcome.notes);
+		return;
+	});
+
+	const refreshAfter = (toolName: string, input: Record<string, unknown>, ctx: ExtensionContext): void => {
+		if (catalog === null) return;
+		if (toolName === "write" || toolName === "edit") refreshTarget(input["path"], ctx);
+		else if (toolName === "bash") catalog = rescanCatalog(catalog, roots, warnings);
+	};
+
+	pi.on("tool_result", (event, ctx) => {
+		if (config === null || !config.enabled) return;
+		const notes = notesByCall.get(event.toolCallId) ?? [];
+		notesByCall.delete(event.toolCallId);
+		refreshAfter(event.toolName, event.input, ctx);
+		if (notes.length === 0) return;
+		return { content: [...event.content, { type: "text" as const, text: `kb: ${notes.join("; ")}` }] };
+	});
+
+	/** Re-parse one knowledge file after a successful write/edit. */
+	const refreshTarget = (filePath: unknown, ctx: ExtensionContext): void => {
+		if (typeof filePath !== "string" || catalog === null) return;
+		const target = findKnowledgeTarget(filePath, ctx.cwd, roots);
+		if (target === null || target.nested) return;
+		const abs = path.join(target.root.dir, `${target.id}.md`);
+		const result = parseEntryFile(abs, target.root);
+		catalog = result.entry ? upsertEntry(catalog, result.entry, roots) : removeEntry(catalog, abs, roots);
+		if (result.invalid !== null) notify(ctx, `knowledge: entry not usable: ${result.invalid}`, "warning");
+	};
+
+	pi.registerTool({
+		name: "kb_search",
+		label: "Knowledge Search",
+		description:
+			"Search the project knowledge base. Returns matching entries with their file paths; read the file before applying an entry. " +
+			"Supports tag, status, and scope filters.",
+		promptSnippet: "Search project knowledge entries (title, when, tags, body)",
+		parameters: Type.Object({
+			query: Type.Optional(Type.String({ description: "Search terms. Required unless tags are given." })),
+			tags: Type.Optional(Type.Array(Type.String(), { description: "All tags must match (AND)." })),
+			status: Type.Optional(
+				Type.Union(
+					[Type.Literal("active"), Type.Literal("any"), Type.Literal("superseded"), Type.Literal("deprecated")],
+					{ description: 'Status filter. Default "active".' },
+				),
+			),
+			scope: Type.Optional(
+				Type.Union([Type.Literal("project"), Type.Literal("user")], { description: "Limit to one scope." }),
+			),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, description: "Maximum results (default 10)." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			if (config === null || catalog === null || !config.enabled) {
+				return { content: [{ type: "text" as const, text: "No knowledge base is loaded." }], details: { hits: [] } };
+			}
+			const query = params.query?.trim() ?? "";
+			const tags = params.tags ?? [];
+			if (query === "" && tags.length === 0) {
+				return {
+					content: [{ type: "text" as const, text: "Provide a query or at least one tag." }],
+					details: { hits: [] },
+				};
+			}
+			const options: SearchOptions = {
+				query,
+				tags,
+				status: (params.status ?? "active") as Status | "any",
+				scope: params.scope ?? null,
+				limit: params.limit ?? 10,
+			};
+			const result = searchCatalog(catalog, options, config);
+			const capped = capSearchText(
+				result.hits.map((hit) => formatHit(hit, roots.length > 1)),
+				SEARCH_CONTENT_TOKENS,
+			);
+			return {
+				content: [{ type: "text" as const, text: capped.text || "No matches." }],
+				details: { ...result, truncated: capped.truncated },
+			};
+		},
+	});
+
+	const statusReport = (ctx: ExtensionContext): string => {
+		if (catalog === null || config === null) return "pi-knowledge: not loaded";
+		const counts = issueCounts(lintCatalog(catalog, roots, ctx.cwd, new Date()));
+		return [
+			`pi-knowledge: ${config.enabled ? "on" : "off"}`,
+			`roots: ${roots.map((root) => `${root.scope}=${root.display}${root.readonly ? " (readonly)" : ""}`).join(", ") || "(none)"}`,
+			`entries: ${catalog.entries.length} (${catalog.entries.filter((entry) => entry.status === "active").length} active)`,
+			`injection: ${rendered?.tier ?? "off"} ~${rendered?.totalTokens ?? 0} tokens`,
+			`lint: ${counts.errors} errors, ${counts.warnings} warnings`,
+			`backend: ${config.search.backend}`,
+		].join("\n");
+	};
+
+	const searchReport = (rest: string[]): string => {
+		if (catalog === null || config === null) return "pi-knowledge: not loaded";
+		const result = searchCatalog(
+			catalog,
+			{ query: rest.join(" "), tags: [], status: "active", scope: null, limit: 10 },
+			config,
+		);
+		const lines = result.hits.map((hit) => `${hit.id}  ${hit.title}  (${hit.score.toFixed(2)})`);
+		const text = lines.join("\n") || "no matches";
+		return result.fallback ? `${text}\n(fallback: ${result.fallbackReason ?? "unavailable"})` : text;
+	};
+
+	const report = (action: string, rest: string[], ctx: ExtensionContext): string | null => {
+		if (catalog === null || config === null) return null;
+		switch (action) {
+			case "status":
+				return statusReport(ctx);
+			case "lint":
+				return (
+					lintCatalog(catalog, roots, ctx.cwd, new Date())
+						.map((issue) => `${issue.level} ${issue.path}: ${issue.message}`)
+						.join("\n") || "no issues"
+				);
+			case "list":
+				return (
+					catalog.entries
+						.filter((entry) => entry.status === "active")
+						.map((entry) => `${entry.id}  ${entry.title}`)
+						.join("\n") || "no entries"
+				);
+			case "tags":
+				return countTags(catalog);
+			case "find":
+				return (
+					catalog.entries
+						.filter((entry) => entry.status === "active" && rest.every((tag) => entry.tags.includes(tag)))
+						.map((entry) => `${entry.id}  ${entry.title}`)
+						.join("\n") || "no matches"
+				);
+			case "search":
+				return searchReport(rest);
+			default:
+				return null;
+		}
+	};
+
+	const runCapture = async (ctx: ExtensionContext, rest: string[]): Promise<void> => {
+		if (config === null || config.capture.mode !== "manual") {
+			notify(ctx, "pi-knowledge: capture is disabled", "warning");
+			return;
+		}
+		const focus = rest.length > 0 ? `\nFocus: ${rest.join(" ")}` : "";
+		await pi.sendUserMessage(`${CAPTURE_PROMPT}${focus}`, { deliverAs: "followUp" });
+		notify(ctx, "pi-knowledge: capture requested", "info");
+	};
+
+	pi.registerCommand("kb", {
+		description: "pi-knowledge: status | lint | list | tags | find <tag...> | search <query> | capture [focus]",
+		handler: async (args, ctx) => {
+			if (config === null || !config.enabled) {
+				notify(ctx, "pi-knowledge: disabled", "info");
+				return;
+			}
+			const [action = "status", ...rest] = args.trim().split(/\s+/);
+			if (action === "capture") {
+				await runCapture(ctx, rest);
+				return;
+			}
+			const text = report(action, rest, ctx);
+			if (text === null) {
+				notify(
+					ctx,
+					"usage: /kb status | lint | list | tags | find <tag...> | search <query> | capture [focus]",
+					"warning",
+				);
+				return;
+			}
+			notify(ctx, cap(text, COMMAND_OUTPUT_LIMIT), "info");
+		},
+	});
+}
