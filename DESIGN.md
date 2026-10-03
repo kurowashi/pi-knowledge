@@ -47,7 +47,7 @@ flowchart LR
 
 - 会話のエピソード記憶。
 - 自動キャプチャ。v1 は `off` と `manual` のみ。
-- チーム共有スコープ。v1 では project と user のみ。
+- チーム共有 root への書き込み。team root は常に read-only です。
 - document index のシステムプロンプト注入。
 
 ## 2. 要件
@@ -103,7 +103,7 @@ flowchart LR
 | entry | 1知識を表す `knowledge/<id>.md`。root 直下の `.md` のみ |
 | id | エントリの識別子。ファイル名から `.md` を除いた部分(§5.3) |
 | root | エントリを格納するディレクトリ(§5) |
-| scope | root の帰属。`project` / `user` |
+| scope | root の帰属。`project` / `user` / `team`(共有・read-only 用) |
 | shadow | 同一 id が複数 root にあり、優先度の低い側が採用されない状態 |
 | catalog | 全エントリの frontmatter とファイル情報の現在状態(§8) |
 | search index | catalog と本文から作る検索用データ(§8) |
@@ -156,7 +156,7 @@ flowchart LR
 | フィールド | 型 | 既定 | 制約 |
 |---|---|---|---|
 | `path` | string | 必須 | cwd 基準の相対パスまたは `~` 展開。ディレクトリでなければ警告して無効化 |
-| `scope` | string | `"project"` | `project` / `user`。他は設定警告 |
+| `scope` | string | `"project"` | `project` / `user` / `team`。他は設定警告 |
 | `priority` | integer | 100 | 1以上。同順位は記載順 |
 | `readonly` | boolean | false | true なら書き込みを常にブロック |
 
@@ -167,7 +167,7 @@ flowchart LR
 - 解決後パスが同一または包含関係にある root は設定警告とし、包含される側を無効化する。symlink は解決後パスで判定する。
 - 存在しない root は警告して無効化する。全 root が無効なら知識機能は no-op になる。
 - `roots: []` も no-op とする。
-- 同一 scope の root が複数ある場合は優先度の高い1つだけを有効化し、他は設定警告で無効化する。有効 root は最大2つ(project / user 各1)。
+- 同一 scope の root が複数ある場合は優先度の高い1つだけを有効化し、他は設定警告で無効化する。有効 root は最大3つ(project / user / team 各1)。
 - 設定マージはグローバル→プロジェクトの順で項目単位。`roots` は配列ごと置換する。
 
 ### 5.3 id 衝突と shadow
@@ -348,7 +348,7 @@ source: docs/api.md
 | `query` | string | なし | `tags` と両方空ならエラー |
 | `tags` | string[] | なし | 全タグ一致(AND) |
 | `status` | `"active"` / `"any"` / `"superseded"` / `"deprecated"` | `"active"` | `any` は全 status |
-| `scope` | string | なし | `project` / `user` を指定。省略時は全 root |
+| `scope` | string | なし | `project` / `user` / `team` を指定。省略時は全 root |
 | `backend` | string | 設定値 | その呼び出しだけ設定を上書き |
 | `limit` | integer | 10 | 1〜50 |
 
@@ -379,7 +379,7 @@ source: docs/api.md
 | 注入物 | タイミング | 予算 |
 |---|---|---|
 | 固定文 | 毎リクエスト | ≤ 80 |
-| `Roots:` 行 | 毎リクエスト | ≤ 40(有効 root 最大2) |
+| `Roots:` 行 | 毎リクエスト | ≤ 40(有効 root 最大3) |
 | 索引の1行 | 毎リクエスト | 典型 88 / 最悪 493(§10.3) |
 | `kb_search` のツール宣言 | 毎リクエスト | ≤ 120 |
 | `knowledge-curation` のメタデータ(pi が注入する skill の name + description) | 毎リクエスト | ≤ 60 |
@@ -393,7 +393,7 @@ source: docs/api.md
 >
 > This list is a discovery index. Read the entry file before applying it: `<dir>/<id>.md` per the Roots line. The body holds the conclusion, conditions, counterexamples, and evidence. Fix outdated entries in place; add an entry when work yields reusable knowledge.
 
-固定文の末尾に `Roots: scope=path` の1行を常に付けます(有効 root は最大2)。パスが長いときは 32 字で `…` 切り詰めます。root が1つなら索引行は `id`、複数なら `scope:id` とし、読み出しは解決済みパスで `<dir>/<id>.md`。
+固定文の末尾に `Roots: scope=path` の1行を常に付けます(有効 root は最大3)。パスが長いときは 32 字で `…` 切り詰めます。root が1つなら索引行は `id`、複数なら `scope:id` とし、読み出しは解決済みパスで `<dir>/<id>.md`。
 
 ### 10.2 推定
 
@@ -538,7 +538,8 @@ source: docs/api.md
   "capture": { "mode": "manual" },
   "write": { "enforce": "block" },
   "docs": { "path": "docs/INDEX.md", "include": ["docs/**"], "exclude": [], "maxLines": 500 },
-  "stale": { "days": 365 }
+  "stale": { "days": 365 },
+  "cache": { "enabled": true }
 }
 ```
 
@@ -635,7 +636,7 @@ source: docs/api.md
 | 1 MVP (実装済み) | 解析・catalog・注入・lint・write/edit hook・capture(manual)・スキル・CLI list/tags/find/search(lexical)/lint・設定 | FR1–FR4、FR6、FR9、NFR1–NFR2、NFR4–NFR5 |
 | 2 品質 (実装済み) | stale / refs / dups / docs、bench | FR7–FR8、性能目標 |
 | 3 検証と拡張 (実装済み) | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
-| 4 共有 | readonly の共有 root、索引の永続キャッシュ | 複数人運用で破綻しない |
+| 4 共有 (実装済み) | readonly の共有 root(team)、索引の永続キャッシュ | 複数人運用で破綻しない |
 
 ## 22. 未決事項
 

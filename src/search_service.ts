@@ -1,16 +1,25 @@
 /**
  * Search service: selects a backend, builds its index lazily, and falls back to
  * lexical with a visible reason when the requested backend is unavailable
- * (DESIGN.md §9).
+ * (DESIGN.md §9). When given a cache directory, the FTS5 index and embedding
+ * vectors persist across sessions and are reused while the catalog fingerprint
+ * matches (DESIGN.md §21, Phase 4).
  */
 
+import * as path from "node:path";
 import { cosine, embeddingDocument, embedTexts } from "./backend_embedding.ts";
 import { FtsIndex } from "./backend_fts.ts";
 import type { KnowledgeConfig } from "./config.ts";
+import { fingerprintCatalog, readJsonCache, writeJsonCache } from "./index_cache.ts";
 import { matchesFilters, searchCatalog, toHit } from "./search.ts";
 import type { Backend, CatalogData, FallbackReason, SearchHit, SearchOptions, SearchResult } from "./types.ts";
 
 const RRF_K = 60;
+
+export interface SearchCacheOptions {
+	cwd: string;
+	enabled: boolean;
+}
 
 export interface BackendStatus {
 	id: Backend;
@@ -24,18 +33,31 @@ interface EmbeddingHits {
 	tokens: number | null;
 }
 
+interface EmbeddingCacheFile {
+	fingerprint: string;
+	vectors: Record<string, number[]>;
+}
+
 export class SearchService {
 	private readonly catalog: CatalogData;
 	private readonly config: KnowledgeConfig;
+	private readonly cacheCwd: string;
+	private readonly cacheEnabled: boolean;
 	private readonly fts: FtsIndex;
 	private embeddingVectors: Map<string, number[]> | null = null;
 	private embeddingIndexPromise: Promise<FallbackReason | null> | null = null;
 	private lastTokens: number | null = null;
 
-	constructor(catalog: CatalogData, config: KnowledgeConfig) {
+	constructor(catalog: CatalogData, config: KnowledgeConfig, cache?: SearchCacheOptions) {
 		this.catalog = catalog;
 		this.config = config;
-		this.fts = new FtsIndex(catalog);
+		this.cacheCwd = cache?.cwd ?? "";
+		this.cacheEnabled = cache?.enabled === true && this.cacheCwd !== "";
+		const dbPath = this.cacheEnabled ? path.join(this.cacheCwd, ".pi", "knowledge-fts.sqlite") : null;
+		this.fts = new FtsIndex(catalog, {
+			dbPath,
+			fingerprint: dbPath === null ? null : fingerprintCatalog(catalog, "fts5"),
+		});
 	}
 
 	/** Provider-reported query tokens from the most recent search, if any. */
@@ -89,6 +111,10 @@ export class SearchService {
 		return endpoint !== "" && model !== "";
 	}
 
+	private cacheFile(name: string): string | null {
+		return this.cacheEnabled ? path.join(this.cacheCwd, ".pi", name) : null;
+	}
+
 	private async embeddingIndex(): Promise<FallbackReason | null> {
 		if (this.embeddingVectors !== null) return null;
 		if (this.embeddingIndexPromise === null) this.embeddingIndexPromise = this.buildEmbeddingIndex();
@@ -98,14 +124,21 @@ export class SearchService {
 	}
 
 	private async buildEmbeddingIndex(): Promise<FallbackReason | null> {
-		if (this.embeddingVectors !== null) return null;
 		const entries = this.catalog.entries;
 		if (entries.length === 0) {
 			this.embeddingVectors = new Map();
 			return null;
 		}
+		const embedding = this.config.search.embedding;
+		const file = this.cacheFile("knowledge-embeddings.json");
+		const fingerprint = fingerprintCatalog(this.catalog, `embedding:${embedding.endpoint}:${embedding.model}`);
+		const cached = file === null ? null : readEmbeddingCache(file);
+		if (cached !== null && cached.fingerprint === fingerprint) {
+			this.embeddingVectors = new Map(Object.entries(cached.vectors));
+			return null;
+		}
 		const result = await embedTexts(
-			this.config.search.embedding,
+			embedding,
 			entries.map((entry) => embeddingDocument(entry)),
 		);
 		if (!result.ok) return result.reason;
@@ -117,6 +150,7 @@ export class SearchService {
 			vectors.set(`${entry.dir}/${entry.id}`, vector);
 		}
 		this.embeddingVectors = vectors;
+		if (file !== null) writeJsonCache(file, { fingerprint, vectors: Object.fromEntries(vectors) });
 		return null;
 	}
 
@@ -167,6 +201,19 @@ function firstDimension(vectors: Map<string, number[]> | null): number {
 	if (vectors === null) return 0;
 	for (const vector of vectors.values()) return vector.length;
 	return 0;
+}
+
+function readEmbeddingCache(file: string): EmbeddingCacheFile | null {
+	const value = readJsonCache<unknown>(file);
+	if (typeof value !== "object" || value === null) return null;
+	const record = value as Record<string, unknown>;
+	const rawVectors = record["vectors"];
+	if (typeof record["fingerprint"] !== "string" || typeof rawVectors !== "object" || rawVectors === null) return null;
+	const vectors: Record<string, number[]> = {};
+	for (const [key, vector] of Object.entries(rawVectors as Record<string, unknown>)) {
+		if (Array.isArray(vector) && vector.every((item) => typeof item === "number")) vectors[key] = vector as number[];
+	}
+	return { fingerprint: record["fingerprint"], vectors };
 }
 
 function fuse(lexical: SearchHit[], embedded: SearchHit[], limit: number): SearchHit[] {

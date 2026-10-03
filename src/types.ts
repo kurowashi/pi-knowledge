@@ -1,6 +1,6 @@
 /** Shared types for pi-knowledge. */
 
-export type Scope = "project" | "user";
+export type Scope = "project" | "user" | "team";
 export type Status = "active" | "superseded" | "deprecated";
 export type Backend = "lexical" | "fts5" | "embedding" | "hybrid";
 export type Enforce = "block" | "warn";

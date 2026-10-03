@@ -7,7 +7,8 @@
  *   `=`, or `]`; such roots are disabled with a warning.
  * - Nonexistent roots are disabled with a warning.
  * - Contained roots disable the contained side.
- * - One active root per scope, highest priority wins; at most two roots.
+ * - One active root per scope, highest priority wins; scopes are project,
+ *   user, and team (read-only shared).
  */
 
 import * as fs from "node:fs";

@@ -71,3 +71,22 @@ test("~ paths expand and missing ones warn", () => {
 		assert.equal(warnings.length, 1);
 	});
 });
+
+test("team roots stay active alongside project and user", () => {
+	withTempDir((cwd) => {
+		fs.mkdirSync(path.join(cwd, "project"));
+		fs.mkdirSync(path.join(cwd, "user"));
+		fs.mkdirSync(path.join(cwd, "team"));
+		const roots = resolveRoots(
+			cwd,
+			[
+				root({ path: "project" }),
+				root({ path: "user", scope: "user" }),
+				root({ path: "team", scope: "team", readonly: true }),
+			],
+			[],
+		);
+		assert.equal(roots.length, 3);
+		assert.equal(roots.find((item) => item.scope === "team")?.readonly, true);
+	});
+});

@@ -110,3 +110,13 @@ test("the default root is a silent no-op when knowledge/ is absent", () => {
 		});
 	});
 });
+
+test("team scope and cache config resolve", () => {
+	const config = resolveConfig([{ roots: [{ path: "shared", scope: "team" }], cache: { enabled: false } }], []);
+	assert.equal(config.roots[0]?.scope, "team");
+	assert.equal(config.cache.enabled, false);
+	assert.equal(resolveConfig([], []).cache.enabled, true);
+	const warnings: string[] = [];
+	assert.equal(resolveConfig([{ cache: { enabled: "yes" } }], warnings).cache.enabled, true);
+	assert.ok(warnings.some((warning) => warning.includes("cache.enabled")));
+});

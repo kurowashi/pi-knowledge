@@ -55,6 +55,7 @@ export interface KnowledgeConfig {
 	write: { enforce: Enforce };
 	docs: DocsConfig;
 	stale: { days: number };
+	cache: { enabled: boolean };
 }
 
 export const CONFIG_FILE_NAME = "knowledge.json";
@@ -72,6 +73,7 @@ export const DEFAULT_CONFIG: KnowledgeConfig = {
 	write: { enforce: "block" },
 	docs: { path: "docs/INDEX.md", include: ["docs/**"], exclude: [], maxLines: 500 },
 	stale: { days: 365 },
+	cache: { enabled: true },
 };
 
 export function agentDir(): string {
@@ -163,7 +165,7 @@ function rootsOr(value: unknown, warnings: string[]): RootConfig[] {
 		}
 		roots.push({
 			path: item["path"],
-			scope: enumOr<Scope>(item["scope"], "roots[].scope", ["project", "user"], "project", warnings),
+			scope: enumOr<Scope>(item["scope"], "roots[].scope", ["project", "user", "team"], "project", warnings),
 			priority:
 				typeof item["priority"] === "number" && Number.isFinite(item["priority"]) && item["priority"] >= 1
 					? Math.floor(item["priority"])
@@ -185,6 +187,7 @@ export function resolveConfig(raws: Record<string, unknown>[], warnings: string[
 	const docs = objectOr(raw["docs"], "docs", warnings);
 	const stale = objectOr(raw["stale"], "stale", warnings);
 	const recall = objectOr(raw["recall"], "recall", warnings);
+	const cache = objectOr(raw["cache"], "cache", warnings);
 	return {
 		enabled: boolOr(raw["enabled"], "enabled", DEFAULT_CONFIG.enabled, warnings),
 		roots: rootsOr(raw["roots"], warnings),
@@ -229,6 +232,7 @@ export function resolveConfig(raws: Record<string, unknown>[], warnings: string[
 			maxLines: positiveIntOr(docs["maxLines"], "docs.maxLines", DEFAULT_CONFIG.docs.maxLines, warnings),
 		},
 		stale: { days: positiveIntOr(stale["days"], "stale.days", DEFAULT_CONFIG.stale.days, warnings) },
+		cache: { enabled: boolOr(cache["enabled"], "cache.enabled", DEFAULT_CONFIG.cache.enabled, warnings) },
 	};
 }
 

@@ -46,7 +46,10 @@
 | 設定はグローバル→プロジェクトの順にマージし、project が優先 | `test/unit/config.test.ts` | `src/config.ts` |
 | 未信頼プロジェクトの設定は無視する | `test/unit/config.test.ts` | `src/config.ts` |
 | 壊れた設定は警告して既定値で動き、セッションを止めない | `test/unit/config.test.ts` | `src/config.ts` |
-| 同一 scope の root は優先度の高い1つだけ有効。有効 root は最大2 | `test/unit/roots.test.ts` | `src/roots.ts` |
+| 同一 scope の root は優先度の高い1つだけ有効。有効 root は最大3 | `test/unit/roots.test.ts` | `src/roots.ts` |
+| team root は書き込みを常にブロックする | `test/unit/hooks.test.ts` | `src/hooks.ts` |
+| FTS5・埋め込みキャッシュは指紋一致時のみ再利用し、壊れていても再構築できる | `test/unit/index_cache.test.ts` + `test/unit/search_service.test.ts` | `src/index_cache.ts` |
+| キャッシュ無効でも検索は動作する | `test/unit/search_service.test.ts` | `src/search_service.ts` |
 
 ### 依存関係・配布
 

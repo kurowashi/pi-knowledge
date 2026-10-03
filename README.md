@@ -68,6 +68,10 @@ Search backends are selectable (`search.backend` or `--backend`). An unavailable
 
 `knowledge.json` at `$PI_CODING_AGENT_DIR/knowledge.json` (global) or `.pi/knowledge.json` (project). Global values load first; a trusted project then overrides them key by key. Broken config falls back to defaults with a warning and never blocks the session. See [DESIGN.md §16](DESIGN.md#16-設定スキーマ) for the full schema and defaults.
 
+Roots have a `scope`: `project` (default), `user`, or `team`. A team root is meant for a shared, read-only checkout (set `readonly: true`); writes to it are blocked.
+
+Search indexes persist under `.pi/` (`knowledge-fts.sqlite`, `knowledge-embeddings.json`) and are reused while the corpus is unchanged. Add `.pi/knowledge-*` to your `.gitignore`; disable the cache with `"cache": { "enabled": false }`.
+
 ## Privacy
 
 Search is local and lexical by default. Embedding search is opt-in: it sends entry text and queries to the endpoint you configure, with the API key read from an environment variable named in the config.

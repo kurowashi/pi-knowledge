@@ -155,7 +155,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		}
 		roots = resolveRoots(ctx.cwd, config.roots, warnings);
 		catalog = buildCatalog(roots, warnings);
-		service = new SearchService(catalog, config);
+		service = new SearchService(catalog, config, { cwd: ctx.cwd, enabled: config.cache.enabled });
 		rendered = renderIndex(catalog, roots, config, ctx.model?.contextWindow ?? null);
 		section = config.injection.enabled && roots.length > 0 ? rendered.text : "";
 		const counts = issueCounts(lintCatalog(catalog, roots, ctx.cwd, new Date()));
@@ -242,7 +242,9 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		const before = catalog;
 		if (toolName === "write" || toolName === "edit") refreshTarget(input["path"], ctx);
 		else if (toolName === "bash") catalog = rescanCatalog(catalog, roots, warnings);
-		if (config !== null && catalog !== null && catalog !== before) service = new SearchService(catalog, config);
+		if (config !== null && catalog !== null && catalog !== before) {
+			service = new SearchService(catalog, config, { cwd: ctx.cwd, enabled: config.cache.enabled });
+		}
 	};
 
 	pi.on("tool_result", (event, ctx) => {
@@ -282,7 +284,9 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 				),
 			),
 			scope: Type.Optional(
-				Type.Union([Type.Literal("project"), Type.Literal("user")], { description: "Limit to one scope." }),
+				Type.Union([Type.Literal("project"), Type.Literal("user"), Type.Literal("team")], {
+					description: "Limit to one scope.",
+				}),
 			),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, description: "Maximum results (default 10)." })),
 			backend: Type.Optional(

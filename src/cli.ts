@@ -69,7 +69,7 @@ function parseStatus(value: string | undefined): { status: Status | "any"; warni
 
 function parseScope(value: string | undefined): { scope: Scope | null; warning: string | null } {
 	if (value === undefined) return { scope: null, warning: null };
-	if (value === "project" || value === "user") return { scope: value, warning: null };
+	if (value === "project" || value === "user" || value === "team") return { scope: value, warning: null };
 	return { scope: null, warning: `kb: unknown scope ${value}; searching all scopes` };
 }
 
@@ -232,7 +232,7 @@ export async function execute(argv: string[], cwd: string): Promise<CliResult> {
 	const roots = resolveRoots(cwd, loaded.config.roots, warnings);
 	const catalog = buildCatalog(roots, warnings);
 	const stderr = warnings.map((warning) => `kb: ${warning}`).join("\n");
-	const service = new SearchService(catalog, loaded.config);
+	const service = new SearchService(catalog, loaded.config, { cwd, enabled: loaded.config.cache.enabled });
 	const runners: Record<string, () => CliResult | Promise<CliResult>> = {
 		list: () => runList(rest, catalog, roots, stderr),
 		tags: () => ({ code: 0, stdout: formatTagCounts(catalog), stderr }),
