@@ -1,9 +1,11 @@
 /**
  * pi-knowledge extension entry.
  *
- * - `session_start`: load config, resolve roots, build the catalog, freeze the
+ * - `session_start`: load config, resolve roots, build the catalog, render the
  *   injected index, and report lint warnings.
- * - `before_agent_start`: re-apply the frozen index section every run, and
+ * - `session_compact`: rescan the catalog and re-render the injected index so a
+ *   continuation after compaction sees the current knowledge (DESIGN.md §10.4).
+ * - `before_agent_start`: re-apply the current index section every run, and
  *   optionally add a recall hint.
  * - `tool_call`: normalize new-entry paths (id assignment) and validate writes.
  * - `tool_result`: refresh the catalog after write/edit/bash and surface notes.
@@ -181,10 +183,17 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		now: new Date(),
 	});
 
-	const announceWarnings = (ctx: ExtensionContext): void => {
-		if (warnings.length === 0) return;
-		const [first, ...rest] = warnings;
+	const announceWarnings = (ctx: ExtensionContext, items: string[] = warnings): void => {
+		if (items.length === 0) return;
+		const [first, ...rest] = items;
 		notify(ctx, `knowledge: ${first ?? ""}${rest.length > 0 ? ` (+${rest.length} more)` : ""}`, "warning");
+	};
+
+	/** Re-render the injected index from the current catalog (session start, compaction). */
+	const refreshIndex = (ctx: ExtensionContext): void => {
+		if (config === null || catalog === null) return;
+		rendered = renderIndex(catalog, roots, config, ctx.model?.contextWindow ?? null);
+		section = config.injection.enabled && roots.length > 0 ? rendered.text : "";
 	};
 
 	const reload = (ctx: ExtensionContext): void => {
@@ -204,8 +213,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		roots = resolveRoots(ctx.cwd, config.roots, warnings);
 		catalog = buildCatalog(roots, warnings);
 		service = new SearchService(catalog, config, { cwd: ctx.cwd, enabled: config.cache.enabled });
-		rendered = renderIndex(catalog, roots, config, ctx.model?.contextWindow ?? null);
-		section = config.injection.enabled && roots.length > 0 ? rendered.text : "";
+		refreshIndex(ctx);
 		const issues = lintCatalog(catalog, roots, ctx.cwd, new Date());
 		const counts = issueCounts(issues);
 		if (counts.errors > 0 || counts.warnings > 0) {
@@ -224,6 +232,16 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 			section = "";
 			notify(ctx, `knowledge: failed to load: ${message(error)}`, "warning");
 		}
+	});
+
+	pi.on("session_compact", (_event, ctx) => {
+		if (config === null || catalog === null || !config.enabled) return;
+		const before = warnings.length;
+		const next = rescanCatalog(catalog, roots, warnings);
+		service = new SearchService(next, config, { cwd: ctx.cwd, enabled: config.cache.enabled });
+		catalog = next;
+		refreshIndex(ctx);
+		announceWarnings(ctx, warnings.slice(before));
 	});
 
 	const recallHint = (

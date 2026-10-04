@@ -1,9 +1,10 @@
 /**
  * Rendering of the injected index.
  *
- * The section is frozen at session start. Within the effective budget the
- * renderer degrades full -> title -> pointer, so the permanent context cost
- * stays bounded regardless of entry count or field lengths (DESIGN.md §10).
+ * The section is rendered at session start and refreshed from the live catalog
+ * after compaction (DESIGN.md §10.4). Within the effective budget the renderer
+ * degrades full -> title -> pointer, so the permanent context cost stays
+ * bounded regardless of entry count or field lengths (DESIGN.md §10).
  */
 
 import type { KnowledgeConfig } from "./config.ts";

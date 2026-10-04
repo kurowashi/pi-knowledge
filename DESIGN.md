@@ -42,7 +42,7 @@ flowchart LR
 既定フロー:
 
 - 読み出し: injected index または `kb_search` の結果から `read` で本文を読む。
-- 書き込み: `write` / `edit` → hook が ID 付与と検証 → catalog 更新 → 次セッションの索引に反映。
+- 書き込み: `write` / `edit` → hook が ID 付与と検証 → catalog 更新 → `session_compact` または次セッションの索引に反映。
 - キャプチャ: `/kb capture` → 通常の agent turn → 上記の書き込み経路。
 - 整理: `/kb review` → 重複・stale 候補をモデルへ提示 → モデルが `read` して `write` / `edit` で適用。
 
@@ -59,7 +59,7 @@ flowchart LR
 
 | ID | 要件 |
 |---|---|
-| FR1 | セッション開始時に索引を注入し、既存知識の存在に気付ける |
+| FR1 | セッション開始時と compaction 後に索引を注入し、既存知識の存在に気付ける |
 | FR2 | 索引・検索から本文を読み、結論・条件・根拠を適用できる |
 | FR3 | エージェントと人間が通常の `write` / `edit` で知識を追加・更新できる |
 | FR4 | 書き込み時に形式・参照・上書きを検証する |
@@ -110,7 +110,7 @@ flowchart LR
 | shadow | 同一 id が複数 root にあり、優先度の低い側が採用されない状態 |
 | catalog | 全エントリの frontmatter とファイル情報の現在状態(§8) |
 | search index | catalog と本文から作る検索用データ(§8) |
-| injected index | セッション開始時に固定した索引テキスト(§8、§10) |
+| injected index | セッション開始時と compaction 成功後に生成する索引テキスト(§8、§10) |
 | document index | `kb docs` が生成する外部文書の索引(§12) |
 | source | エントリの出典。URL またはリポジトリ内パス |
 | link | 本文中の `[[id]]` 参照。`supersedes` はライフサイクル専用 |
@@ -307,11 +307,12 @@ source: docs/api.md
 
 | 概念 | 内容 | 更新 |
 |---|---|---|
-| catalog | frontmatter とファイル情報(本文を含まない) | session_start で全構築、書き込みで該当分を更新 |
+| catalog | frontmatter とファイル情報(本文を含まない) | session_start で全構築、書き込みで該当分を更新、成功した compaction で再走査 |
 | search index | catalog と本文から作る検索用データ | 書き込みで dirty 化、次回検索で遅延再構築 |
-| injected index | session_start の catalog から凍結した索引 | session_start のみ。セッション中は不変 |
+| injected index | catalog から生成した索引 | session_start と `session_compact`(compaction 成功後に発火)の直後。それ以外のセッション中は不変 |
 
-- セッション中の書き込みは catalog と search index に反映し、injected index は次セッションまで更新しない。プロンプトキャッシュの prefix を保護するためである。
+- セッション中の書き込みは catalog と search index に反映する。injected index は session_start と `session_compact` の直後に再生成し、それ以外では更新しない。compaction は会話の作業記憶が要約される境界で、以後のターンでは索引が既存知識への唯一の常時発見面になるため、ここで実態へ同期する。毎変更で再生成するとプロンプトキャッシュの prefix を壊すため、境界を compaction に限る。
+- `session_compact` の再生成は catalog の再走査と再レンダリングのみを行う。設定・root・recall 状態は再読込しない。再走査で新たに生じた警告は通知する。
 - 再読込・再開・fork では session_start から再構築する。
 
 ## 9. 検索
@@ -438,8 +439,10 @@ source: docs/api.md
 | title | `id title`(title 60字)。`when` は検索と本文で判断する |
 | pointer | 件数、タグ一覧、`kb_search` の案内のみ |
 
-- 索引は session_start で凍結し、`before_agent_start` が毎回同じ値を `systemPromptOptions.sections.knowledge_index` に再設定する。options は毎回正規化されるため、前回の設定が残る前提にしない。
-- モデル・設定の変更は次セッションから反映する。`injection.enabled: false` なら注入しない。
+- 索引は session_start と `session_compact`(compaction 成功後に発火)で生成する。`before_agent_start` が毎回現在値を `systemPromptOptions.sections.knowledge_index` に再設定する。options は毎回正規化されるため、前回の設定が残る前提にしない。
+- `session_compact` の再生成は catalog の変化(セッション中の `write` / `edit` / `bash` / 外部変更)を反映する。設定・root の変更は次セッションから反映する。`injection.enabled: false` なら注入しない。
+- 実効予算は再生成時点のモデルの `contextWindow` から計算する。
+- 再生成した索引は、次に発生する `before_agent_start` で `knowledge_index` セクションに再設定する。`before_agent_start` は run 開始時にのみ発生するため、run 途中の auto-compaction ではその run が終わるまで旧索引のままとする。
 
 ### 10.5 recall ヒント
 
@@ -524,6 +527,7 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 | 種別 | 名前 | 備考 |
 |---|---|---|
 | イベント | `session_start` | catalog 構築、予算判定、lint サマリ(`knowledge_lint`)の送信と警告通知 |
+| イベント | `session_compact` | compaction 成功後に catalog を再走査し injected index を再生成。再走査の警告を通知 |
 | イベント | `before_agent_start` | injected index の再設定、recall ヒント |
 | イベント | `tool_call` | ID 付与、書き込み前検証(ブロック可) |
 | イベント | `tool_result` | 事後検証、catalog 更新、実パス通知 |
@@ -590,14 +594,14 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 | ID 生成の再試行超過 | 生成時 | 書き込みエラー | 再試行し、失敗時は書き込みエラー(モデルは ID を生成しない) |
 | 同一パスの add/add 衝突(merge) | Git / lint | Git の conflict としてユーザーが解決 | 片方を新 ID にリネームし、参照を手動更新する |
 | `bash` 経由の変更 | `tool_result` の mtime | 警告、catalog 更新 | session_start 検証、CI lint |
-| pi 外の変更 | mtime+size 不一致 | 該当分を再解析 | 次回検索で反映 |
+| pi 外の変更 | mtime+size 不一致 | 該当分を再解析 | 次回検索で search index に反映。成功した compaction で injected index に反映 |
 | mtime+size が同じ外部変更 | 検知不能 | 制限として許容 | session_start / CI |
 | FTS5 不可 | 機能検出/初期化/クエリ失敗 | lexical へフォールバック表示 | 継続 |
 | embedding 失敗 | 初回検索 | `fallbackReason` を付けて lexical | 継続 |
 | catalog 解析失敗 | 解析時 | 該当エントリを除外し警告 | 修正 |
-| 注入予算超過 | session_start | 段階縮退 | 閾値調整または bench |
-| 固定費が実効予算を超える | session_start | ヘッダのみを注入し `overBudget` を表示 | `injection.maxTokens` を増やす |
-| 文脈窓不明 | session_start | `maxTokens` を使用 | 継続 |
+| 注入予算超過 | session_start / `session_compact` | 段階縮退 | 閾値調整または bench |
+| 固定費が実効予算を超える | session_start / `session_compact` | ヘッダのみを注入し `overBudget` を表示 | `injection.maxTokens` を増やす |
+| 文脈窓不明 | session_start / `session_compact` | `maxTokens` を使用 | 継続 |
 | 設定不正 / 未信頼 | 読み込み時 | 警告して既定値。project は無視 | 修正 |
 | hook の schema 不一致・例外 | `tool_call` | 介入せず pi に任せる | 継続 |
 | root の権限不足・解決不能 | scan / write | 該当 root を無効化し警告。知識パスへの書き込みはエラー | 権限修正 |
@@ -609,7 +613,8 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 | `kb_search` の引数不正 | ツール呼び出し | エラーを返し修正を促す | 引数を修正 |
 | lexical 索引の構築・本文読み取り失敗 | 検索時 | 該当エントリを除外し警告。検索は継続 | 修正 |
 | injected index の設定失敗 | `before_agent_start` | 通知して注入なしで継続 | 再開・修正 |
-| catalog 走査失敗 | session_start | 読めた root だけを使い警告 | 権限・設定を修正 |
+| injected index の再生成失敗 | pi の extension error | 旧索引のまま継続し警告を通知 | 次回の `session_compact` または `session_start` で再生成 |
+| catalog 走査失敗 | session_start / `session_compact` | 読めた root だけで catalog と索引を再生成し警告 | 権限・設定を修正 |
 | 書き込み後の catalog 更新失敗 | `tool_result` | dirty として次回再構築 | 次回検索で回復 |
 | コマンド出力失敗(tags / find / refs / dups / bench) | コマンド | エラーを表示 | 引数・権限を修正 |
 | document index の読み込み失敗 | `kb docs` | 10%以下はスキップ警告、超なら終了コード2 | 該当ファイルを修正 |
@@ -629,7 +634,7 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 
 | 要件 | 設計 | テスト |
 |---|---|---|
-| FR1 | §8、§10 | 索引注入、固定文、予算縮退、採用段階の報告、複数 root の scope 表記 |
+| FR1 | §8、§10 | 索引注入、compaction 後の再生成、固定文、予算縮退、採用段階の報告、複数 root の scope 表記 |
 | FR2 | §5.4、§6.2、§9 | 索引行と検索結果の `path` から `read` できる。本文は注入されない。`kb_search` の content が3,000トークン以下 |
 | FR3 | §5.5、§6、§7 | `write` 新規作成と `edit` 更新、書き込み先解決、catalog/search への反映 |
 | FR4 | §6、§7.2 | エラーでブロック、`warn` で catalog 除外、上書き・readonly・shadow は常にブロック、hook 異常時は非介入 |

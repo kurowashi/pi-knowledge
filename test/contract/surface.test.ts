@@ -6,7 +6,7 @@ import test from "node:test";
 import { discoverAndLoadExtensions, type Extension, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { PACKAGE_ROOT } from "../helpers/paths.ts";
 
-const EXPECTED_EVENTS = ["before_agent_start", "session_start", "tool_call", "tool_result"];
+const EXPECTED_EVENTS = ["before_agent_start", "session_compact", "session_start", "tool_call", "tool_result"];
 
 async function loadKnowledgeExtension(): Promise<Extension> {
 	const sandbox = mkdtempSync(join(tmpdir(), "pi-knowledge-surface-"));

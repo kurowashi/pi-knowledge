@@ -126,7 +126,7 @@ function writeConfig(cwd: string, config: Record<string, unknown>): void {
 	fs.writeFileSync(path.join(cwd, ".pi", "knowledge.json"), JSON.stringify(config));
 }
 
-test("the index is injected and frozen for the session", async () => {
+test("the index is injected and frozen until compaction", async () => {
 	await withProject(async (cwd) => {
 		writeEntry(path.join(cwd, "knowledge"), "11111111", { title: "Alpha", when: ["setup"] }, BODY);
 		const h = harness(cwd);
@@ -141,6 +141,44 @@ test("the index is injected and frozen for the session", async () => {
 			second.systemPromptOptions.sections["knowledge_index"],
 			first.systemPromptOptions.sections["knowledge_index"],
 		);
+	});
+});
+
+test("compaction refreshes the index from the live catalog", async () => {
+	await withProject(async (cwd) => {
+		const dir = path.join(cwd, "knowledge");
+		writeEntry(dir, "11111111", { title: "Alpha" }, BODY);
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		const first = beforeEvent("");
+		h.emit("before_agent_start", first);
+		assert.match(first.systemPromptOptions.sections["knowledge_index"] ?? "", /Alpha/);
+		writeEntry(dir, "22222222", { title: "Beta" }, BODY);
+		writeEntry(dir, "11111111", { title: "Alpha", status: "deprecated" }, BODY);
+		const stale = beforeEvent("");
+		h.emit("before_agent_start", stale);
+		assert.match(stale.systemPromptOptions.sections["knowledge_index"] ?? "", /Alpha/);
+		assert.doesNotMatch(stale.systemPromptOptions.sections["knowledge_index"] ?? "", /Beta/);
+		h.emit("session_compact", {
+			type: "session_compact",
+			compactionEntry: { type: "compaction", id: "cmp" },
+			fromExtension: false,
+			reason: "manual",
+			willRetry: false,
+		});
+		const fresh = beforeEvent("");
+		h.emit("before_agent_start", fresh);
+		const index = fresh.systemPromptOptions.sections["knowledge_index"] ?? "";
+		assert.match(index, /Beta/);
+		assert.doesNotMatch(index, /Alpha/);
+	});
+});
+
+test("compaction before session start is a no-op", async () => {
+	await withProject(async (cwd) => {
+		const h = harness(cwd);
+		h.emit("session_compact", { type: "session_compact" });
+		assert.deepEqual(h.notifications, []);
 	});
 });
 

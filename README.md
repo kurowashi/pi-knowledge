@@ -1,12 +1,12 @@
 # pi-knowledge
 
-Project knowledge for Pi. The plugin injects a small discovery index at session start, validates Markdown entries while you edit them, searches them lexically, and bundles a `kb` CLI for CI.
+Project knowledge for Pi. The plugin injects a small discovery index at session start and refreshes it from disk after a successful compaction, validates Markdown entries while you edit them, searches them lexically, and bundles a `kb` CLI for CI.
 
 **Scope (v0.1.0):** `kb list`, `tags`, `find`, `search`, `lint`, `stale`, `dups`, `refs`, `docs`, `bench`, and the `/kb` command (`status`, `config`) are implemented. Search backends are selectable: lexical (default), FTS5, embedding, and hybrid. Embedding needs an OpenAI-compatible endpoint; it is off until configured.
 
 ## What it does
 
-- **Injects an index** of `knowledge/` entries into the system prompt within a token budget. Bodies stay out of context until read.
+- **Injects an index** of `knowledge/` entries into the system prompt within a token budget. The index is refreshed from disk after a successful compaction. Bodies stay out of context until read.
 - **Assigns entry IDs** and validates every `write` / `edit` to the knowledge root. No separate write tool is added.
 - **Searches** entries with `kb_search` (lexical, tag/status/scope filters).
 - **Lints and curates** entries with `kb lint` (form errors, unknown fields, dangling `[[id]]` links, stale `review_after`, duplicates, superseded-but-active entries), `kb stale`, `kb dups`, and `kb refs`.

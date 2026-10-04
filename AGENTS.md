@@ -18,7 +18,7 @@
 |---|---|---|
 | モデル向けツールは `kb_search` の1つだけ | `test/contract/surface.test.ts` | `src/index.ts` |
 | コマンドは `/kb` の1つだけ | `test/contract/surface.test.ts` | `src/index.ts` |
-| イベントは `session_start` / `before_agent_start` / `tool_call` / `tool_result` の4種で各1ハンドラ | `test/contract/surface.test.ts` | `src/index.ts` |
+| イベントは `session_start` / `before_agent_start` / `session_compact` / `tool_call` / `tool_result` の5種で各1ハンドラ | `test/contract/surface.test.ts` | `src/index.ts` |
 | 専用の write 系ツールを登録しない | `test/contract/surface.test.ts` | `src/index.ts` |
 
 ### 不変条件
@@ -29,7 +29,7 @@
 | 既存エントリへの `write` は常にブロック。更新は `edit` のみ | `test/unit/hooks.test.ts` | `src/hooks.ts` |
 | readonly・shadow への書き込みは `write.enforce: "warn"` でもブロック | `test/unit/hooks.test.ts` | `src/hooks.ts` |
 | ルート外と `.md` 以外には干渉しない | `test/unit/hooks.test.ts` | `src/hooks.ts` |
-| 注入は session_start で凍結し、セッション中に更新しない | `test/integration/extension.test.ts` | `src/index.ts` |
+| 注入は session_start と `session_compact` 後に再生成し、それ以外のセッション中は更新しない | `test/integration/extension.test.ts` | `src/index.ts` |
 | 注入は実効予算内に縮退する。固定費が上回る場合はヘッダのみを注入し `overBudget` を表示する | `test/unit/render.test.ts` | `src/render.ts` |
 | 固定文・ツール宣言・スキルはトークン予算内 | `test/contract/budget.test.ts` | `src/render.ts` |
 | lint サマリは error/warning があるとき、上位8件を session_start ごとに1回モデルへ送る | `test/integration/extension.test.ts` | `src/index.ts` |
