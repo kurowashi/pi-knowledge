@@ -2,7 +2,7 @@
 
 Project knowledge for Pi. The plugin injects a small discovery index at session start, validates Markdown entries while you edit them, searches them lexically, and bundles a `kb` CLI for CI.
 
-**Scope (v0.1.0):** `kb list`, `tags`, `find`, `search`, `lint`, `stale`, `dups`, `refs`, `docs`, `bench`, and the `/kb` command are implemented. Search backends are selectable: lexical (default), FTS5, embedding, and hybrid. Embedding needs an OpenAI-compatible endpoint; it is off until configured.
+**Scope (v0.1.0):** `kb list`, `tags`, `find`, `search`, `lint`, `stale`, `dups`, `refs`, `docs`, `bench`, and the `/kb` command (`status`, `config`) are implemented. Search backends are selectable: lexical (default), FTS5, embedding, and hybrid. Embedding needs an OpenAI-compatible endpoint; it is off until configured.
 
 ## What it does
 

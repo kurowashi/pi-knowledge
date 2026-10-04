@@ -269,6 +269,9 @@ test("commands report and capture", async () => {
 		h.emit("session_start", session());
 		await h.run("status");
 		assert.match(h.notifications.at(-1) ?? "", /pi-knowledge: on/);
+		await h.run("config");
+		assert.match(h.notifications.at(-1) ?? "", /"stale": \{\s*"days": 365/);
+		assert.match(h.notifications.at(-1) ?? "", /"maxTokens": 4000/);
 		await h.run("list");
 		assert.match(h.notifications.at(-1) ?? "", /Alpha/);
 		await h.run("tags");

@@ -420,7 +420,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("kb", {
 		description:
-			"pi-knowledge: status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
+			"pi-knowledge: status | config | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
 		handler: async (args, ctx) => {
 			if (config === null || !config.enabled) {
 				notify(ctx, "pi-knowledge: disabled", "info");
@@ -439,7 +439,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 			if (text === null) {
 				notify(
 					ctx,
-					"usage: /kb status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
+					"usage: /kb status | config | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
 					"warning",
 				);
 				return;

@@ -29,6 +29,7 @@ export async function commandReport(action: string, rest: string[], ctx: ReportC
 	const { catalog, config } = ctx;
 	if (catalog === null || config === null) return null;
 	const handlers: Record<string, () => string | null | Promise<string | null>> = {
+		config: () => JSON.stringify(config, null, 2),
 		status: () => ctx.status(),
 		lint: () => formatIssues(lintCatalog(catalog, ctx.roots, ctx.cwd, ctx.now)) || "no issues",
 		list: () => formatCatalog(catalog, ctx.roots.length > 1, false) || "no entries",

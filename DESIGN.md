@@ -528,7 +528,7 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 | イベント | `tool_call` | ID 付与、書き込み前検証(ブロック可) |
 | イベント | `tool_result` | 事後検証、catalog 更新、実パス通知 |
 | ツール | `kb_search` | 読み取り専用。検索のみで書き込みは行わない |
-| コマンド | `/kb` | status / lint / list / tags / find / search / stale / dups / refs / review / capture / docs / bench |
+| コマンド | `/kb` | status / config / lint / list / tags / find / search / stale / dups / refs / review / capture / docs / bench |
 | スキル | `knowledge-curation` | 書き方・キュレーション・キャプチャ手順。pi がスキルブロック(name・description・location)を注入 |
 | 設定 | `knowledge.json` | §16 |
 
@@ -538,6 +538,7 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 - `enabled: false` は全機能を無効化し、`/kb status` だけを残す。
 - 注入は `sections.knowledge_index` キーを使う。設定に失敗した場合は通知して注入なしで継続する。
 - `/kb status` は enabled、有効 root、注入段階と推定トークン、backend、lint 件数を表示する。
+- `/kb config` はマージと既定値を適用した解決済み設定を JSON で表示する。設定を変更するコマンドは持たず、設定は `knowledge.json` で変更する。
 
 ## 16. 設定スキーマ
 
