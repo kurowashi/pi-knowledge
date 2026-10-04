@@ -28,6 +28,7 @@ import { SearchService } from "./search_service.ts";
 import type { Backend, CatalogData, Issue, ResolvedRoot, Scope, SearchOptions, Status } from "./types.ts";
 
 const RECALL_LIMIT = 3;
+const LINT_MESSAGE_LIMIT = 8;
 const SEARCH_CONTENT_TOKENS = 3000;
 const COMMAND_OUTPUT_LIMIT = 8000;
 const CAPTURE_PROMPT = [
@@ -96,6 +97,17 @@ function issueCounts(issues: Issue[]): { errors: number; warnings: number } {
 	return { errors, warnings };
 }
 
+/** One-time session-start message that makes lint findings actionable for the model. */
+function formatLintMessage(issues: Issue[]): string {
+	const shown = issues.slice(0, LINT_MESSAGE_LIMIT).map((issue) => `- ${issue.level}: ${issue.path}: ${issue.message}`);
+	const hidden = issues.length - shown.length;
+	if (hidden > 0) shown.push(`- (+${hidden} more)`);
+	return [
+		"knowledge: lint findings in the knowledge base. Fix entries in place with edit; search with kb_search before adding new ones.",
+		...shown,
+	].join("\n");
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -158,9 +170,11 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		service = new SearchService(catalog, config, { cwd: ctx.cwd, enabled: config.cache.enabled });
 		rendered = renderIndex(catalog, roots, config, ctx.model?.contextWindow ?? null);
 		section = config.injection.enabled && roots.length > 0 ? rendered.text : "";
-		const counts = issueCounts(lintCatalog(catalog, roots, ctx.cwd, new Date()));
+		const issues = lintCatalog(catalog, roots, ctx.cwd, new Date());
+		const counts = issueCounts(issues);
 		if (counts.errors > 0 || counts.warnings > 0) {
 			notify(ctx, `knowledge: ${counts.errors} errors, ${counts.warnings} warnings (run /kb lint)`, "warning");
+			pi.sendMessage({ customType: "knowledge_lint", content: formatLintMessage(issues), display: false });
 		}
 		announceWarnings(ctx);
 	};
@@ -310,7 +324,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 			`pi-knowledge: ${config.enabled ? "on" : "off"}`,
 			`roots: ${roots.map((root) => `${root.scope}=${root.display}${root.readonly ? " (readonly)" : ""}`).join(", ") || "(none)"}`,
 			`entries: ${catalog.entries.length} (${catalog.entries.filter((entry) => entry.status === "active").length} active)`,
-			`injection: ${rendered?.tier ?? "off"} ~${rendered?.totalTokens ?? 0} tokens`,
+			`injection: ${rendered?.tier ?? "off"} ~${rendered?.totalTokens ?? 0} tokens${rendered?.overBudget ? " (over fixed budget)" : ""}`,
 			`lint: ${counts.errors} errors, ${counts.warnings} warnings`,
 			`backend: ${config.search.backend}`,
 		].join("\n");
@@ -348,7 +362,8 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 	};
 
 	pi.registerCommand("kb", {
-		description: "pi-knowledge: status | lint | list | tags | find <tag...> | search <query> | capture [focus]",
+		description:
+			"pi-knowledge: status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | docs | bench | capture [focus]",
 		handler: async (args, ctx) => {
 			if (config === null || !config.enabled) {
 				notify(ctx, "pi-knowledge: disabled", "info");
@@ -363,7 +378,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 			if (text === null) {
 				notify(
 					ctx,
-					"usage: /kb status | lint | list | tags | find <tag...> | search <query> | capture [focus]",
+					"usage: /kb status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | docs | bench | capture [focus]",
 					"warning",
 				);
 				return;

@@ -53,6 +53,9 @@ function fieldIssues(entry: EntryRecord): Issue[] {
 	if (entry.when.length > WHEN_COUNT_LIMIT)
 		issues.push(warn(entry, `${entry.when.length} when items (limit ${WHEN_COUNT_LIMIT})`));
 	if (entry.body.trim().length < 50) issues.push(warn(entry, "body is empty or shorter than 50 chars"));
+	if (entry.unknownFields.length > 0) {
+		issues.push(warn(entry, `unknown frontmatter field(s): ${entry.unknownFields.join(", ")}`));
+	}
 	return issues;
 }
 
@@ -102,6 +105,18 @@ function collisionIssues(catalog: CatalogData): Issue[] {
 	return issues;
 }
 
+/** An active entry that another entry has replaced should be marked inactive. */
+function supersedeIssues(catalog: CatalogData, roots: ResolvedRoot[]): Issue[] {
+	const issues: Issue[] = [];
+	for (const entry of catalog.entries) {
+		if (entry.supersedes === null) continue;
+		const target = resolveId(entry.supersedes, catalog, roots);
+		if (target === null || target === entry || target.status !== "active") continue;
+		issues.push(warn(target, `superseded by ${entry.id} but status is active`));
+	}
+	return issues;
+}
+
 function dupIssues(catalog: CatalogData): Issue[] {
 	return findDuplicatePairs(catalog).map((pair) => warn(pair.a, `similar to ${pair.b.id}`));
 }
@@ -144,6 +159,7 @@ export function lintCatalog(catalog: CatalogData, roots: ResolvedRoot[], repoRoo
 		...invalidIssues(catalog),
 		...collisionIssues(catalog),
 		...entryIssues,
+		...supersedeIssues(catalog, roots),
 		...dupIssues(catalog),
 		...nestedIssues(roots),
 	];

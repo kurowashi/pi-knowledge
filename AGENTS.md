@@ -30,11 +30,16 @@
 | readonly・shadow への書き込みは `write.enforce: "warn"` でもブロック | `test/unit/hooks.test.ts` | `src/hooks.ts` |
 | ルート外と `.md` 以外には干渉しない | `test/unit/hooks.test.ts` | `src/hooks.ts` |
 | 注入は session_start で凍結し、セッション中に更新しない | `test/integration/extension.test.ts` | `src/index.ts` |
-| 注入はトークン予算を超えない | `test/unit/render.test.ts` | `src/render.ts` |
+| 注入は実効予算内に縮退する。固定費が上回る場合はヘッダのみを注入し `overBudget` を表示する | `test/unit/render.test.ts` | `src/render.ts` |
+| 固定文・ツール宣言・スキルはトークン予算内 | `test/contract/budget.test.ts` | `src/render.ts` |
+| lint サマリは error/warning があるとき、上位8件を session_start ごとに1回モデルへ送る | `test/integration/extension.test.ts` | `src/index.ts` |
 | 本文は注入しない | `test/unit/render.test.ts` | `src/render.ts` |
 | 文書索引は生成物自身とバイナリを除外し、注入しない | `test/unit/docs.test.ts` | `src/docs.ts` |
 | Git 不在・shallow では git 日付をスキップして警告 | `test/unit/stale.test.ts` | `src/stale.ts` |
-| refs は `[[id]]` と `supersedes` の両方を拾う | `test/unit/refs.test.ts` | `src/refs.ts` |
+| refs は `[[id]]` と `supersedes`(`scope:id` を含む)を拾う | `test/unit/refs.test.ts` | `src/refs.ts` |
+| 未知フィールドは catalog が無視し lint が警告する | `test/unit/catalog.test.ts` + `test/unit/lint.test.ts` | `src/catalog.ts` |
+| 同一エントリの tags は重複除去する | `test/unit/catalog.test.ts` | `src/catalog.ts` |
+| supersede で置換された active エントリは lint 警告する | `test/unit/lint.test.ts` | `src/lint.ts` |
 | 利用不可の backend は lexical へフォールバックし、理由を必ず表示する | `test/unit/search_service.test.ts` | `src/search_service.ts` |
 | embedding 失敗は分類され、検索を止めない | `test/unit/search_service.test.ts` | `src/backend_embedding.ts` |
 | FTS5 が無い環境でも lexical で動く | `test/unit/search_service.test.ts` | `src/backend_fts.ts` |
@@ -47,6 +52,7 @@
 | 未信頼プロジェクトの設定は無視する | `test/unit/config.test.ts` | `src/config.ts` |
 | 壊れた設定は警告して既定値で動き、セッションを止めない | `test/unit/config.test.ts` | `src/config.ts` |
 | 同一 scope の root は優先度の高い1つだけ有効。有効 root は最大3 | `test/unit/roots.test.ts` | `src/roots.ts` |
+| `floorTokens` > `maxTokens` は `maxTokens` に補正する | `test/unit/config.test.ts` | `src/config.ts` |
 | team root は書き込みを常にブロックする | `test/unit/hooks.test.ts` | `src/hooks.ts` |
 | FTS5・埋め込みキャッシュは指紋一致時のみ再利用し、壊れていても再構築できる | `test/unit/index_cache.test.ts` + `test/unit/search_service.test.ts` | `src/index_cache.ts` |
 | キャッシュ無効でも検索は動作する | `test/unit/search_service.test.ts` | `src/search_service.ts` |

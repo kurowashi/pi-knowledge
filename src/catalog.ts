@@ -13,6 +13,7 @@ import type { CatalogData, EntryRecord, InvalidEntry, ResolvedRoot, Status } fro
 
 export const ID_PATTERN = /^[0-9a-f]{8}$/;
 const STATUSES: readonly Status[] = ["active", "superseded", "deprecated"];
+const KNOWN_FIELDS = new Set(["title", "when", "tags", "status", "supersedes", "review_after", "source"]);
 
 export interface ParseResult {
 	entry: EntryRecord | null;
@@ -49,7 +50,7 @@ function toWhen(value: unknown): string[] | null {
 function toTags(value: unknown): string[] | null {
 	if (value === undefined) return [];
 	if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-		return value.map((item) => item.trim()).filter((item) => item !== "");
+		return [...new Set(value.map((item) => item.trim()).filter((item) => item !== ""))];
 	}
 	return null;
 }
@@ -101,6 +102,9 @@ export function parseEntryText(
 	if (typeof base === "string") return { entry: null, invalid: base };
 	const extra = readExtraFields(parsed.meta);
 	if (typeof extra === "string") return { entry: null, invalid: extra };
+	const unknownFields = Object.keys(parsed.meta)
+		.filter((key) => !KNOWN_FIELDS.has(key))
+		.sort();
 	return {
 		entry: {
 			id,
@@ -110,6 +114,7 @@ export function parseEntryText(
 			readonly: root.readonly,
 			...base,
 			...extra,
+			unknownFields,
 			body: parsed.body,
 			mtimeMs,
 			size,

@@ -23,6 +23,7 @@ export function makeEntry(overrides: Partial<EntryRecord> = {}): EntryRecord {
 		supersedes: null,
 		reviewAfter: null,
 		source: null,
+		unknownFields: [],
 		body: "This body is long enough to pass the fifty character minimum. ".repeat(2),
 		mtimeMs: 0,
 		size: 0,

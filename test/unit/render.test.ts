@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_CONFIG } from "../../src/config.ts";
-import { effectiveBudget, FIXED_TEXT, renderIndex, renderLine, rootsLine, truncate } from "../../src/render.ts";
+import {
+	effectiveBudget,
+	FIXED_TEXT,
+	renderIndex,
+	renderLine,
+	rootsLine,
+	SKILL_TOKEN_BUDGET,
+	TOOL_TOKEN_BUDGET,
+	truncate,
+} from "../../src/render.ts";
 import { estimateTokens } from "../../src/tokens.ts";
 import { catalogOf, makeEntry, makeRoot } from "../helpers/fixtures.ts";
 
@@ -45,13 +54,19 @@ test("renderIndex degrades full -> title -> pointer within the budget", () => {
 	const entry = makeEntry({ title: "日".repeat(120), when: ["条".repeat(200)] });
 	const catalog = catalogOf([entry]);
 	const header = `${FIXED_TEXT}\n${rootsLine(roots)}`;
-	const overhead = estimateTokens(header) + 120 + 60;
-	const base = { ...DEFAULT_CONFIG, injection: { ...DEFAULT_CONFIG.injection, maxTokens: overhead + 250 } };
-	assert.equal(renderIndex(catalog, roots, base, 200_000).tier, "title");
-	const pointer = { ...base, injection: { ...base.injection, maxTokens: overhead + 10 } };
-	const pointerResult = renderIndex(catalog, roots, pointer, 200_000);
+	const fixed = estimateTokens(header) + TOOL_TOKEN_BUDGET + SKILL_TOKEN_BUDGET;
+	const withBudget = (extra: number) => ({
+		...DEFAULT_CONFIG,
+		injection: { ...DEFAULT_CONFIG.injection, maxTokens: fixed + extra },
+	});
+	assert.equal(renderIndex(catalog, roots, withBudget(250), 200_000).tier, "title");
+	const pointerResult = renderIndex(catalog, roots, withBudget(60), 200_000);
 	assert.equal(pointerResult.tier, "pointer");
 	assert.ok(pointerResult.text.includes("kb_search"));
-	const full = { ...base, injection: { ...base.injection, maxTokens: overhead + 700 } };
-	assert.equal(renderIndex(catalog, roots, full, 200_000).tier, "full");
+	assert.equal(pointerResult.overBudget, false);
+	const clamped = renderIndex(catalog, roots, withBudget(-30), 200_000);
+	assert.equal(clamped.tier, "pointer");
+	assert.ok(!clamped.text.includes("kb_search"));
+	assert.equal(clamped.overBudget, true);
+	assert.equal(renderIndex(catalog, roots, withBudget(700), 200_000).tier, "full");
 });

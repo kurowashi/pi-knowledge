@@ -70,6 +70,12 @@ test("roots parse; invalid entries skip; empty array means no roots", () => {
 	assert.deepEqual(resolveConfig([{ roots: "no" }], []).roots, DEFAULT_CONFIG.roots);
 });
 
+test("floorTokens above maxTokens is clamped to maxTokens", () => {
+	const config = resolveConfig([{ injection: { maxTokens: 500, floorTokens: 1000 } }], []);
+	assert.equal(config.injection.maxTokens, 500);
+	assert.equal(config.injection.floorTokens, 500);
+});
+
 test("loadConfig merges global and project configs and honors trust", () => {
 	withTempDir((cwd) => {
 		const agent = path.join(cwd, "agent");

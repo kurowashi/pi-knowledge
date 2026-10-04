@@ -35,6 +35,8 @@ export interface EntryRecord {
 	supersedes: string | null;
 	reviewAfter: string | null;
 	source: string | null;
+	/** Frontmatter keys outside the documented schema, sorted. */
+	unknownFields: string[];
 	body: string;
 	mtimeMs: number;
 	size: number;

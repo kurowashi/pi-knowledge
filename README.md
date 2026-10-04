@@ -9,7 +9,7 @@ Project knowledge for Pi. The plugin injects a small discovery index at session 
 - **Injects an index** of `knowledge/` entries into the system prompt within a token budget. Bodies stay out of context until read.
 - **Assigns entry IDs** and validates every `write` / `edit` to the knowledge root. No separate write tool is added.
 - **Searches** entries with `kb_search` (lexical, tag/status/scope filters).
-- **Lints and curates** entries with `kb lint` (form errors, dangling `[[id]]` links, stale `review_after`, duplicates), `kb stale`, `kb dups`, and `kb refs`.
+- **Lints and curates** entries with `kb lint` (form errors, unknown fields, dangling `[[id]]` links, stale `review_after`, duplicates, superseded-but-active entries), `kb stale`, `kb dups`, and `kb refs`.
 - **Generates a document index** with `kb docs` and checks for drift in CI with `kb docs --check`.
 
 ## Install
@@ -46,6 +46,8 @@ Then conditions, evidence, counterexamples, and uncertainty.
 | `supersedes` | no | Replaced entry id |
 | `review_after` | no | `YYYY-MM-DD` (UTC) |
 | `source` | no | URL or repo-relative path |
+
+Unknown fields stay in the file but are ignored by the catalog and reported by `kb lint`.
 
 ## CLI
 

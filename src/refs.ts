@@ -20,7 +20,7 @@ export function findReferences(catalog: CatalogData, id: string): RefReport {
 	const target = catalog.byId.get(id) ?? null;
 	const references: Reference[] = [];
 	for (const entry of catalog.entries) {
-		if (entry.supersedes === id) {
+		if (entry.supersedes !== null && linkMatches(entry.supersedes, id)) {
 			references.push({ from: entry, kind: "supersedes" });
 			continue;
 		}
@@ -31,7 +31,7 @@ export function findReferences(catalog: CatalogData, id: string): RefReport {
 	return { target, references };
 }
 
-/** `[[id]]` and `[[scope:id]]` both reference the local id. */
+/** `[[id]]`, `[[scope:id]]`, and scoped `supersedes` all reference the local id. */
 function linkMatches(link: string, id: string): boolean {
 	const colon = link.indexOf(":");
 	return colon === -1 ? link === id : link.slice(colon + 1) === id;

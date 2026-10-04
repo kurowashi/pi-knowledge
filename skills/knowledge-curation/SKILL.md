@@ -20,10 +20,11 @@ Entries are self-contained Markdown notes in `knowledge/`. The plugin assigns th
 
 - Use `edit`. Overwriting with `write` is blocked by design.
 - When new evidence contradicts an entry, update the body and fix `review_after`.
-- When replacing an entry, set `status: superseded` and `supersedes: <old id>` instead of deleting it, unless nothing references it. `supersedes` is only used for replacement, not for general links.
+- To replace an entry, follow this order: write the new entry with `supersedes: <old id>`; edit the old entry to `status: superseded`; check `kb refs <old id>` for backlinks. Do this instead of deleting the old entry unless nothing references it. `supersedes` is only used for replacement, not for general links.
 
 ## Curation
 
-- `kb lint` reports form errors, dangling `[[id]]` links, stale `review_after`, and likely duplicates.
-- Planned for the quality phase: `kb dups` (duplicate candidates) and `kb refs <id>` (backlinks). Until then, find references with `kb_search` and read the entries.
-- Deleting an entry is allowed when nothing references it; search for its id first.
+- `kb lint` reports form errors, unknown fields, dangling `[[id]]` links, stale `review_after`, duplicates, and entries that stay active after being superseded.
+- `kb dups` lists near-duplicate candidates. `kb refs <id>` lists backlinks from `[[id]]` and `supersedes`.
+- At session start, a `knowledge_lint` message lists the top findings when any exist. Fix them with `edit` in the same session.
+- Deleting an entry is allowed when nothing references it; check `kb refs <id>` first.

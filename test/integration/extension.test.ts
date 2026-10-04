@@ -34,6 +34,7 @@ interface Harness {
 	search(params: Record<string, unknown>): Promise<ToolResultLike>;
 	notifications: string[];
 	sent: string[];
+	messages: Array<{ customType?: string; content?: unknown; display?: boolean }>;
 }
 
 function harness(cwd: string): Harness {
@@ -42,6 +43,7 @@ function harness(cwd: string): Harness {
 	const tools = new Map<string, ToolLike>();
 	const notifications: string[] = [];
 	const sent: string[] = [];
+	const messages: Array<{ customType?: string; content?: unknown; display?: boolean }> = [];
 	const api = {
 		on(event: string, handler: Handler) {
 			const list = handlers.get(event) ?? [];
@@ -58,6 +60,9 @@ function harness(cwd: string): Harness {
 		sendUserMessage: async (content: string) => {
 			sent.push(content);
 		},
+		sendMessage: (message: { customType?: string; content?: unknown; display?: boolean }) => {
+			messages.push(message);
+		},
 	} as unknown as ExtensionAPI;
 	const ctx = {
 		cwd,
@@ -70,6 +75,7 @@ function harness(cwd: string): Harness {
 	return {
 		notifications,
 		sent,
+		messages,
 		emit<T = unknown>(event: string, data: unknown): T {
 			let result: unknown;
 			for (const handler of handlers.get(event) ?? []) result = handler(data, ctx) ?? result;
@@ -313,7 +319,7 @@ test("a disabled plugin stays silent and the command reports it", async () => {
 	});
 });
 
-test("lint findings are announced at session start", async () => {
+test("lint findings are announced and sent to the model at session start", async () => {
 	await withProject(async (cwd) => {
 		const dir = path.join(cwd, "knowledge");
 		fs.mkdirSync(dir, { recursive: true });
@@ -321,6 +327,11 @@ test("lint findings are announced at session start", async () => {
 		const h = harness(cwd);
 		h.emit("session_start", session());
 		assert.ok(h.notifications.some((note) => note.includes("errors")));
+		assert.ok(
+			h.messages.some(
+				(item) => item.customType === "knowledge_lint" && String(item.content).includes("no frontmatter"),
+			),
+		);
 	});
 });
 

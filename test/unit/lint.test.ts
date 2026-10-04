@@ -30,6 +30,7 @@ test("validateEntry warns for each rule", () => {
 		[makeEntry({ body: "see [[zzzzzzzz]] and more text to reach the length minimum here" }), "has no target"],
 		[makeEntry({ supersedes: "zzzzzzzz" }), "supersedes target"],
 		[makeEntry({ reviewAfter: "2026-01-01" }), "has passed"],
+		[makeEntry({ unknownFields: ["legacy"] }), "unknown frontmatter field"],
 	];
 	for (const [entry, expected] of cases) {
 		const issues = validateEntry(entry, catalogOf([entry]), [root], "/repo", NOW);
@@ -72,6 +73,17 @@ test("lintCatalog reports invalid entries as errors", () => {
 		const issues = lintCatalog(catalog, roots, cwd, NOW);
 		assert.ok(issues.some((issue) => issue.level === "error" && issue.message.includes("no frontmatter")));
 	});
+});
+
+test("lintCatalog warns when a superseded entry is still active", () => {
+	const old = makeEntry({ id: "11111111", title: "Old" });
+	const next = makeEntry({ id: "22222222", title: "New", supersedes: "11111111" });
+	const roots = [makeRoot("/k")];
+	const issues = lintCatalog(catalogOf([old, next]), roots, "/repo", NOW);
+	assert.ok(issues.some((issue) => issue.message.includes("superseded by 22222222 but status is active")));
+	const inactive = makeEntry({ id: "11111111", title: "Old", status: "superseded" });
+	const clean = lintCatalog(catalogOf([inactive, next]), roots, "/repo", NOW);
+	assert.ok(!clean.some((issue) => issue.message.includes("but status is active")));
 });
 
 test("lintCatalog reports id collisions between roots as errors", () => {

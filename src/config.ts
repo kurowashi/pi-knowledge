@@ -180,6 +180,18 @@ function rootsOr(value: unknown, warnings: string[]): RootConfig[] {
 export function resolveConfig(raws: Record<string, unknown>[], warnings: string[]): KnowledgeConfig {
 	const raw = raws.reduce<Record<string, unknown>>((acc, next) => deepMerge(acc, next), {});
 	const injection = objectOr(raw["injection"], "injection", warnings);
+	const maxTokens = positiveIntOr(
+		injection["maxTokens"],
+		"injection.maxTokens",
+		DEFAULT_CONFIG.injection.maxTokens,
+		warnings,
+	);
+	const floorRaw = positiveIntOr(
+		injection["floorTokens"],
+		"injection.floorTokens",
+		DEFAULT_CONFIG.injection.floorTokens,
+		warnings,
+	);
 	const search = objectOr(raw["search"], "search", warnings);
 	const embedding = objectOr(search["embedding"], "search.embedding", warnings);
 	const capture = objectOr(raw["capture"], "capture", warnings);
@@ -193,18 +205,8 @@ export function resolveConfig(raws: Record<string, unknown>[], warnings: string[
 		roots: rootsOr(raw["roots"], warnings),
 		injection: {
 			enabled: boolOr(injection["enabled"], "injection.enabled", DEFAULT_CONFIG.injection.enabled, warnings),
-			maxTokens: positiveIntOr(
-				injection["maxTokens"],
-				"injection.maxTokens",
-				DEFAULT_CONFIG.injection.maxTokens,
-				warnings,
-			),
-			floorTokens: positiveIntOr(
-				injection["floorTokens"],
-				"injection.floorTokens",
-				DEFAULT_CONFIG.injection.floorTokens,
-				warnings,
-			),
+			maxTokens,
+			floorTokens: Math.min(floorRaw, maxTokens),
 			contextFraction: fractionOr(injection["contextFraction"], warnings),
 		},
 		recall: { mode: enumOr(recall["mode"], "recall.mode", ["off", "hint"] as const, "off", warnings) },

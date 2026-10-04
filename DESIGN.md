@@ -225,9 +225,9 @@ source: docs/api.md
 | `review_after` | 任意 | 再確認期限 | `YYYY-MM-DD`。比較は UTC | stale |
 | `source` | 任意 | 出典 | URL またはリポジトリ内パス | 人間の検証、lint |
 
-- 未知フィールドは保存時に維持し、lint が警告する。
+- 未知フィールドはファイルに残るが catalog では無視し、lint が警告する。
 - `status` が `active` 以外のエントリは注入と既定検索から除外し、status 指定でだけ返す。
-- frontmatter を持たない `.md` は entry にしない(lint 警告)。
+- frontmatter を持たない `<hex8>.md` は entry にせず、lint は error にする。
 
 ### 6.2 本文と参照
 
@@ -293,6 +293,8 @@ source: docs/api.md
 - `source` のリポジトリ内パスが存在しない(URL は検査しない)
 - `review_after` 超過
 - 類似エントリが存在する
+- 未知の frontmatter フィールドがある
+- `supersedes` で指されたエントリが `active` のままである
 - ファイル名が `<hex8>` でない、またはサブディレクトリにある(entry にしない)
 
 - `write.enforce` は実行時の hook 方針。CLI の `kb lint` は常にエラーを報告し、エラーありで終了コード1。catalog から除外されたエントリは `kb lint --invalid` で一覧できる。
@@ -378,14 +380,15 @@ source: docs/api.md
 
 | 注入物 | タイミング | 予算 |
 |---|---|---|
-| 固定文 | 毎リクエスト | ≤ 80 |
-| `Roots:` 行 | 毎リクエスト | ≤ 40(有効 root 最大3) |
-| 索引の1行 | 毎リクエスト | 典型 88 / 最悪 493(§10.3) |
-| `kb_search` のツール宣言 | 毎リクエスト | ≤ 120 |
-| `knowledge-curation` のメタデータ(pi が注入する skill の name + description) | 毎リクエスト | ≤ 60 |
-| recall ヒント | 一致ターンのみ。既定 off | ≤ 60(ターン限定的で常時予算に含めない) |
+| 固定文 | 毎リクエスト | ≤ 110 トークン |
+| `Roots:` 行 | 毎リクエスト | ≤ 50 トークン(有効 root 最大3) |
+| 索引の1行 | 毎リクエスト | 典型 88 / 最悪 493 トークン(§10.3) |
+| `kb_search` のツール宣言(provider へ送る JSON Schema を含む) | 毎リクエスト | ≤ 500 トークン |
+| `knowledge-curation` のスキルブロック(pi が注入する name + description + location + 定型文) | 毎リクエスト | ≤ 300 トークン |
+| lint サマリ(`knowledge_lint` custom message) | session_start に1回のみ | ≤ 300 トークン(常時予算に含めない) |
+| recall ヒント | 一致ターンのみ。既定 off | ≤ 60 トークン(常時予算に含めない) |
 
-索引を除く常時固定オーバーヘッドは 80(固定文) + 40(Roots) + 120(ツール) + 60(スキル) = 300 です。固定文・ツール宣言・スキル説明はパッケージ定数とし、contract test が各字数上限を検証する。超過したパッケージはリリースしない。document index は注入しません。検索結果の上限は §9.3 です。
+索引を除く常時固定オーバーヘッドは文書上限で 110 + 50 + 500 + 300 = 960 トークンです。実測は 105(固定文) + 9(Roots 1個) + 469(ツール宣言) + 269(スキル) = 852 トークンです。ツール宣言は provider の function calling、スキルブロックは pi が注入する分も会計に含めます。固定文・ツール宣言・スキル説明はパッケージ定数とし、contract test が各トークン上限を検証します。超過したパッケージはリリースしません。document index は注入しません。検索結果の上限は §9.3 です。
 
 固定文(英語):
 
@@ -405,7 +408,7 @@ source: docs/api.md
 
 `id-title — when` の内訳。典型と p95 は34件のフィクスチャ実測の初期値で、bench が更新します。複数 root では id 表記が `scope:id` になり、+5〜15字(≤6トークン)です。
 
-| 構成要素 | 上限 | 最悪 | 典型 | p95 |
+| 構成要素 | 上限(字) | 最悪(トークン) | 典型(トークン) | p95(トークン) |
 |---|---|---|---|---|
 | id 表記(`hex8` または `scope:id`) | 21字 | 10 | 4 | 4 |
 | 区切り | 約6字 | 3 | 3 | 3 |
@@ -414,15 +417,16 @@ source: docs/api.md
 | **合計** | 347字 | **493** | **88** | **135** |
 
 - 最悪値は切り詰め後の上限字数(`title` 120字 / `when` 合計200字)から計算した値。
+- 「上限」列は字数、それ以外は保守推定トークンです。
 - 描画時に `title` は120字、`when` は合計200字で切り詰め、`…` を付ける。
-- 実効予算 4,000 から固定オーバーヘッド 300 を引いた 3,700 で、典型では約42行、最悪では約7行。縮退は通常動作である。
+- 実効予算 4,000 のとき、固定費(ツール500 + スキル300)とヘッダ実測約110(固定文105 + Roots 9)を引いた約3,100が索引行に使えます。典型では約35行、最悪では約6行です。Roots が長い場合はその分減ります。縮退は通常動作です。
 
 ### 10.4 予算と縮退
 
 実効予算は `min(injection.maxTokens, max(injection.floorTokens, contextWindow × injection.contextFraction))`。`contextWindow` 不明時は `maxTokens` を使います。既定は 4,000 / 1,000 / 0.02 で、文脈窓 200k なら 4,000、100k なら 2,000、32k なら 1,000。
 
-- 設定値の検証: 0以下・非数値・`contextFraction` が 0以下または 1超は警告して既定値。`floorTokens > maxTokens` は `floorTokens = maxTokens` に補正。
-- 超過時は session_start で段階を選び、採用段階と推定トークンを `/kb status` と通知に出す。
+- 設定値の検証: 0以下・非数値・`contextFraction` が 0以下または 1超は警告して既定値。`floorTokens > maxTokens` は `floorTokens = maxTokens` に補正し、警告は出さない。
+- 超過時は session_start で段階を選び、採用段階と推定トークンを `/kb status` と通知に出す。pointer でも収まらない場合はタグ行→件数行→ヘッダのみの順に削る。固定費が実効予算を超える設定ではヘッダのみを注入し、`overBudget` を `/kb status` に表示する。
 
 | 段階 | 内容 |
 |---|---|
@@ -435,7 +439,11 @@ source: docs/api.md
 
 ### 10.5 recall ヒント
 
-`recall.mode: "hint"` は `before_agent_start` のユーザープロンプトを catalog と字句照合し、上位3件までの `id`(複数 root では `scope:id`)を custom message(`customType: "knowledge_recall"`)としてその run だけに追加します。同一セッションで hint 済みの id は再注入しません。永続化は保証せず、再開時は再度注入され得ます。推定が60トークンを超える場合は件数を減らします。
+`recall.mode: "hint"` は `before_agent_start` のユーザープロンプトを catalog と字句照合し、上位3件までの `id`(複数 root では `scope:id`)を custom message(`customType: "knowledge_recall"`)としてその run だけに追加します。同一セッションで hint 済みの id は再注入しません。永続化は保証せず、再開時は再度注入され得ます。上限3件で60トークン以内に収まります。
+
+### 10.6 lint サマリ
+
+session_start ごとに1回、lint の error / warning が1件以上あるときだけ `pi.sendMessage` で `knowledge_lint` custom message を送ります。上位8件と残件数、修正指示を含みます。モデルはユーザーの `/kb lint` 実行を待たずに修正へ着手できます。常時予算には含めません。session_start の reason が `resume` / `fork` / `reload` の場合は同じセッション文脈で再度送られることがあります(セッション開始ごとに最大1回)。
 
 ## 11. 品質管理
 
@@ -455,7 +463,7 @@ source: docs/api.md
 ### 11.4 重複と矛盾
 
 - `/kb dups` が title・when・tags・本文の字句類似で重複候補を出す。
-- `/kb review` が重複・矛盾候補をモデルに判定させ、統合・superseded 化を提案する。変更は確認後の通常編集で行う。自動書き換えはしない。
+- `/kb review` は未実装です(§21 Phase 5)。実装時は重複・矛盾候補をモデルに判定させ、統合・superseded 化を提案させます。変更は確認後の通常編集で行い、自動書き換えはしません。
 
 ## 12. document index
 
@@ -510,13 +518,13 @@ source: docs/api.md
 
 | 種別 | 名前 | 備考 |
 |---|---|---|
-| イベント | `session_start` | catalog 構築、予算判定、警告通知 |
+| イベント | `session_start` | catalog 構築、予算判定、lint サマリ(`knowledge_lint`)の送信と警告通知 |
 | イベント | `before_agent_start` | injected index の再設定、recall ヒント |
 | イベント | `tool_call` | ID 付与、書き込み前検証(ブロック可) |
 | イベント | `tool_result` | 事後検証、catalog 更新、実パス通知 |
-| ツール | `kb_search` | 読み取り専用。`annotations.readOnlyHint: true` |
-| コマンド | `/kb` | status / lint / list / tags / find / search / stale / dups / refs / capture / review / docs / bench |
-| スキル | `knowledge-curation` | 書き方・キュレーション・キャプチャ手順。pi が name と description を注入 |
+| ツール | `kb_search` | 読み取り専用。検索のみで書き込みは行わない |
+| コマンド | `/kb` | status / lint / list / tags / find / search / stale / dups / refs / capture / docs / bench |
+| スキル | `knowledge-curation` | 書き方・キュレーション・キャプチャ手順。pi がスキルブロック(name・description・location)を注入 |
 | 設定 | `knowledge.json` | §16 |
 
 - 閲覧は `read`、編集は `write` / `edit` をそのまま使う。モデル向けツールは `kb_search` の1つ。
@@ -558,7 +566,7 @@ source: docs/api.md
 | search index 構築 | 1000件で150ms未満(典型)/ 1s未満(64KB) | 初回検索時 |
 | 書き込み検証 | 典型10ms未満 | 対象1ファイル |
 | bash 事後検証 | 1000件で20ms未満 | 全エントリ stat・変化分のみ解析 |
-| 注入 | 実効予算以下。索引以外 ≤300 | 索引1行 典型88・最悪493 |
+| 注入 | 索引以外 ≤960(実測 852、1 root)。固定費超過時はヘッダのみ+`overBudget` | 索引1行 典型88・最悪493トークン |
 | embedding | ローカル処理と分離して報告 | API 往復は別計測 |
 
 ## 18. セキュリティとプライバシー
@@ -582,6 +590,7 @@ source: docs/api.md
 | embedding 失敗 | 初回検索 | `fallbackReason` を付けて lexical | 継続 |
 | catalog 解析失敗 | 解析時 | 該当エントリを除外し警告 | 修正 |
 | 注入予算超過 | session_start | 段階縮退 | 閾値調整または bench |
+| 固定費が実効予算を超える | session_start | ヘッダのみを注入し `overBudget` を表示 | `injection.maxTokens` を増やす |
 | 文脈窓不明 | session_start | `maxTokens` を使用 | 継続 |
 | 設定不正 / 未信頼 | 読み込み時 | 警告して既定値。project は無視 | 修正 |
 | hook の schema 不一致・例外 | `tool_call` | 介入せず pi に任せる | 継続 |
@@ -607,8 +616,8 @@ source: docs/api.md
 
 | 層 | 対象 |
 |---|---|
-| unit | frontmatter 解析・直列化、ID 生成と再試行、lint 各規則、検索スコア、類似度、陳腐化(UTC)、設定解決と範囲補正、トークン推定、root 解決、書き込み先解決 |
-| contract | ツール・コマンド・イベント・設定の表面、runtime import が Node 組み込みのみ、`dependencies` 空、ビルド工程なし、配布物 whitelist、用語・設定キーの定義完全性 |
+| unit | frontmatter 解析・直列化、ID 生成と再試行、lint 各規則(未知フィールド・supersede を含む)、検索スコア、類似度、陳腐化(UTC)、設定解決と範囲補正、トークン推定、root 解決、書き込み先解決 |
+| contract | ツール・コマンド・イベント・設定の表面、固定文・ツール宣言・スキルのトークン予算、runtime import が Node 組み込みのみ、`dependencies` 空、ビルド工程なし、配布物 whitelist、用語・設定キーの定義完全性 |
 | integration | 要件対応表(下表) |
 | perf | §17 の全行 |
 
@@ -623,7 +632,7 @@ source: docs/api.md
 | FR7 | §11 | 参照切れ、stale(Git 失敗含む)、dups、`kb refs` |
 | FR8 | §12 | 生成、`--check`、0件、上限打ち切り、バイナリ除外、書き込み失敗 |
 | FR9 | §14 | CLI と pi の設定解決・lint 結果の一致、終了コード |
-| NFR1 | §10 | 常時オーバーヘッド ≤300、行コスト典型/最悪、縮退段階、検索 content ≤3,000 |
+| NFR1 | §10 | 常時固定費 ≤960(実測852)、行コスト典型/最悪、pointer クランプと overBudget、lint サマリ、検索 content ≤3,000 |
 | NFR2 | §2.3、§9、§18 | runtime import が Node 組み込みのみ。lexical がネットワークなしで動く。FTS5 不可でも動く。embedding 未設定で送信がない |
 | NFR3 | §17 | 全性能行の計測 |
 | NFR4 | §5 | project 既定、user 明示時のみ、書き込み先解決、roots マージ、root 外非干渉 |
@@ -637,6 +646,7 @@ source: docs/api.md
 | 2 品質 (実装済み) | stale / refs / dups / docs、bench | FR7–FR8、性能目標 |
 | 3 検証と拡張 (実装済み) | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
 | 4 共有 (実装済み) | readonly の共有 root(team)、索引の永続キャッシュ | 複数人運用で破綻しない |
+| 5 自律キュレーション (進行中) | lint サマリのモデル通知(実装済み)、`/kb review`(重複・矛盾の判定と統合・superseded の提案。未実装) | ユーザー操作なしで重複と stale が減る |
 
 ## 22. 未決事項
 

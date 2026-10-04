@@ -29,8 +29,20 @@ test("parseEntryText reads the documented fields", () => {
 	assert.equal(result.entry?.supersedes, "deadbeef");
 	assert.equal(result.entry?.reviewAfter, "2027-01-01");
 	assert.equal(result.entry?.source, "docs/a.md");
+	assert.deepEqual(result.entry?.unknownFields, []);
 	assert.equal(result.entry?.mtimeMs, 1);
 	assert.equal(result.entry?.size, 2);
+});
+
+test("tags are deduplicated and unknown fields are collected", () => {
+	const text = entryText({ title: "T", tags: ["x", "x", "y"] }, BODY).replace(
+		"---\n\n",
+		"unknown:\n  - nested\n---\n\n",
+	);
+	const result = parseEntryText(text, "01234567", makeRoot("/k"), "/k/x.md", 0, 0);
+	assert.equal(result.invalid, null);
+	assert.deepEqual(result.entry?.tags, ["x", "y"]);
+	assert.deepEqual(result.entry?.unknownFields, ["unknown"]);
 });
 
 test("when accepts a single string and defaults are applied", () => {

@@ -40,3 +40,13 @@ test("an entry that supersedes and links is reported once", () => {
 	assert.equal(report.references.length, 1);
 	assert.equal(report.references[0]?.kind, "supersedes");
 });
+
+test("scoped supersedes is a backlink", () => {
+	const target = makeEntry({ id: "11111111", scope: "user" });
+	const replacer = makeEntry({ id: "22222222", supersedes: "user:11111111" });
+	const report = findReferences(catalogOf([target, replacer]), "11111111");
+	assert.deepEqual(
+		report.references.map((reference) => `${reference.from.id}:${reference.kind}`),
+		["22222222:supersedes"],
+	);
+});
