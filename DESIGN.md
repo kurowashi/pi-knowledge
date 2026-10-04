@@ -17,6 +17,7 @@
 | 検索 | lexical(既定)/ FTS5 / embedding / hybrid を選択できる。タグ・status・scope で絞れる |
 | 書き込み | `write` / `edit` を hook が検証。専用ツールなし |
 | キャプチャ | `manual`(コマンド実行時のみ) |
+| 整理 | `/kb review` が重複・stale 候補をモデルに提示。適用は通常の `write` / `edit` |
 | document index | 生成のみ。注入しない |
 | CLI | `kb` bin。list / tags / find / search(lexical) / lint / stale / dups / refs / docs / bench。lint は CI の必須ゲート |
 | 実行時依存 | なし(Node 組み込みのみ) |
@@ -34,6 +35,7 @@ flowchart LR
   S --> R[read]
   R --> K
   K --> L["kb lint / stale / dups"]
+  K --> RV["/kb review 候補"] --> W
   K --> T["kb docs の入力"]
 ```
 
@@ -42,6 +44,7 @@ flowchart LR
 - 読み出し: injected index または `kb_search` の結果から `read` で本文を読む。
 - 書き込み: `write` / `edit` → hook が ID 付与と検証 → catalog 更新 → 次セッションの索引に反映。
 - キャプチャ: `/kb capture` → 通常の agent turn → 上記の書き込み経路。
+- 整理: `/kb review` → 重複・stale 候補をモデルへ提示 → モデルが `read` して `write` / `edit` で適用。
 
 ### 1.3 対象外
 
@@ -226,6 +229,7 @@ source: docs/api.md
 | `source` | 任意 | 出典 | URL またはリポジトリ内パス | 人間の検証、lint |
 
 - 未知フィールドはファイルに残るが catalog では無視し、lint が警告する。
+- frontmatter はプレーンスカラー、引用文字列、インライン配列、ブロックリストのみ。行頭 `#` の行はスキップし、インライン `#` とアンカーは解釈せず文字列として扱う。ネスト mapping・予期しないインデント・ブロックスカラー(`>` / `|`)はエラーにする。
 - `status` が `active` 以外のエントリは注入と既定検索から除外し、status 指定でだけ返す。
 - frontmatter を持たない `<hex8>.md` は entry にせず、lint は error にする。
 
@@ -358,7 +362,7 @@ source: docs/api.md
 
 - search index は初回検索時に遅延構築し、frontmatter と本文(1件64KBで打ち切り)を対象にする。本文にだけ一致するエントリも検索できる。
 - 更新は mtime+size をキーにした差分とし、変わったエントリだけ再構築する。
-- モデル向け `content` は最大3,000トークン。各行は1件につき最大200字の本文抜粋を含む。超える場合は件数を減らし、その旨を明記する。
+- モデル向け `content` は最大3,000トークン。各行は tags と最大200字の本文抜粋を含む。超える場合は件数を減らし、その旨を明記する。
 - 完全データは structuredContent で返す(モデルのコンテキストには入らない)。
 
 ### 9.3 索引と result の上限
@@ -463,7 +467,7 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 ### 11.4 重複と矛盾
 
 - `/kb dups` が title・when・tags・本文の字句類似で重複候補を出す。
-- `/kb review` は未実装です(§21 Phase 5)。実装時は重複・矛盾候補をモデルに判定させ、統合・superseded 化を提案させます。変更は確認後の通常編集で行い、自動書き換えはしません。
+- `/kb review [focus]` が重複候補と stale 候補を `pi.sendUserMessage` でモデルに渡し、統合・superseded 化・レビュー日更新を提案させます。モデルは通常の write/edit で適用し、hook の検証を通ります。自動書き換えはしません。候補は重複上位5件と stale 上位10件に制限します。
 
 ## 12. document index
 
@@ -505,13 +509,14 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 | `kb tags` / `kb find <tag>...` | タグ一覧 / AND 検索 | find は0件で1 |
 | `kb search <query> [--json] [--status <s>] [--scope <s>] [--limit <n>]` | 検索結果。limit 上限50 | 0件は0 |
 | `kb lint` | エラーと警告の一覧 | エラーありで1 |
-| `kb stale` / `kb dups` / `kb refs <id>` | 各一覧 | 0 |
+| `kb stale` / `kb refs <id>` | 各一覧 | 0 |
+| `kb dups [--max <n>]` | 重複候補の一覧。`--max <n>` は候補ペアが n 超で終了コード1、n が0以上の整数でなければ2 | 既定は0 |
 | `kb docs [--check]` | document index の生成 / ドリフト検査 | check は差分ありで1。読み込み・書き込み失敗は2 |
 | `kb bench` | backend 別計測(JSON) | 0 |
 | `kb search --backend <b> --require-backend` | backend 指定と厳格化 | backend 不可かつ require で3 |
 
 - 設定解決は `$PI_CODING_AGENT_DIR/knowledge.json` → `.pi/knowledge.json` の順。project は trust 時のみ読む。
-- CI の最小構成は `kb lint` と `kb docs --check`。警告のみでは止めない。
+- CI の最小構成は `kb lint` と `kb docs --check`。警告のみでは止めない。任意で `kb dups --max <n>` を追加できる。
 - `/kb status` は pi コマンド(実装済み)。CLI の `kb status` は提供しない。
 
 ## 15. pi 統合面
@@ -523,7 +528,7 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 | イベント | `tool_call` | ID 付与、書き込み前検証(ブロック可) |
 | イベント | `tool_result` | 事後検証、catalog 更新、実パス通知 |
 | ツール | `kb_search` | 読み取り専用。検索のみで書き込みは行わない |
-| コマンド | `/kb` | status / lint / list / tags / find / search / stale / dups / refs / capture / docs / bench |
+| コマンド | `/kb` | status / lint / list / tags / find / search / stale / dups / refs / review / capture / docs / bench |
 | スキル | `knowledge-curation` | 書き方・キュレーション・キャプチャ手順。pi がスキルブロック(name・description・location)を注入 |
 | 設定 | `knowledge.json` | §16 |
 
@@ -646,7 +651,7 @@ session_start ごとに1回、lint の error / warning が1件以上あるとき
 | 2 品質 (実装済み) | stale / refs / dups / docs、bench | FR7–FR8、性能目標 |
 | 3 検証と拡張 (実装済み) | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
 | 4 共有 (実装済み) | readonly の共有 root(team)、索引の永続キャッシュ | 複数人運用で破綻しない |
-| 5 自律キュレーション (進行中) | lint サマリのモデル通知(実装済み)、`/kb review`(重複・矛盾の判定と統合・superseded の提案。未実装) | ユーザー操作なしで重複と stale が減る |
+| 5 自律キュレーション (実装済み) | lint サマリのモデル通知、`/kb review`(重複・stale 候補の判定と統合・superseded の提案) | 提案が通常の write/edit 経路で適用できる |
 
 ## 22. 未決事項
 

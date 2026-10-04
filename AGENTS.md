@@ -40,6 +40,9 @@
 | 未知フィールドは catalog が無視し lint が警告する | `test/unit/catalog.test.ts` + `test/unit/lint.test.ts` | `src/catalog.ts` |
 | 同一エントリの tags は重複除去する | `test/unit/catalog.test.ts` | `src/catalog.ts` |
 | supersede で置換された active エントリは lint 警告する | `test/unit/lint.test.ts` | `src/lint.ts` |
+| `/kb review` は候補を `sendUserMessage` で渡す(プラグイン自身は書き込まない) | `test/integration/extension.test.ts` + `test/contract/surface.test.ts` | `src/index.ts` |
+| `kb dups --max N` は候補ペアが N 超で終了コード1 | `test/unit/cli.test.ts` | `src/cli.ts` |
+| 検索結果の content は tags を含む | `test/integration/extension.test.ts` | `src/format.ts` |
 | 利用不可の backend は lexical へフォールバックし、理由を必ず表示する | `test/unit/search_service.test.ts` | `src/search_service.ts` |
 | embedding 失敗は分類され、検索を止めない | `test/unit/search_service.test.ts` | `src/backend_embedding.ts` |
 | FTS5 が無い環境でも lexical で動く | `test/unit/search_service.test.ts` | `src/backend_fts.ts` |

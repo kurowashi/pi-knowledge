@@ -25,10 +25,14 @@ import { commandReport } from "./report.ts";
 import { resolveRoots } from "./roots.ts";
 import { capSearchText, scoreEntry, tokenize } from "./search.ts";
 import { SearchService } from "./search_service.ts";
-import type { Backend, CatalogData, Issue, ResolvedRoot, Scope, SearchOptions, Status } from "./types.ts";
+import { findDuplicatePairs } from "./similar.ts";
+import { type StaleReport, staleReport } from "./stale.ts";
+import type { Backend, CatalogData, EntryRecord, Issue, ResolvedRoot, Scope, SearchOptions, Status } from "./types.ts";
 
 const RECALL_LIMIT = 3;
 const LINT_MESSAGE_LIMIT = 8;
+const REVIEW_LIMIT = 5;
+const REVIEW_STALE_LIMIT = 10;
 const SEARCH_CONTENT_TOKENS = 3000;
 const COMMAND_OUTPUT_LIMIT = 8000;
 const CAPTURE_PROMPT = [
@@ -36,6 +40,13 @@ const CAPTURE_PROMPT = [
 	"Search first with kb_search, then write only self-contained entries that are not already covered.",
 	"Use the write tool with a descriptive filename; the plugin assigns the entry id.",
 	"Follow the knowledge-curation skill: conclusion first, then conditions, evidence, counterexamples, and uncertainty.",
+].join("\n");
+const REVIEW_PROMPT = [
+	"Tidy up the project knowledge base using the candidates below.",
+	"Judge each candidate and apply accepted changes with the normal write/edit tools.",
+	"To replace an entry: write the new entry with supersedes, then set the old entry to status: superseded.",
+	"For stale entries: refresh the body and review_after, or retire the entry.",
+	"Check kb refs before deleting anything; do not rewrite unrelated entries.",
 ].join("\n");
 
 function message(error: unknown): string {
@@ -85,6 +96,31 @@ async function runKnowledgeSearch(
 		content: [{ type: "text", text: capped.text || "No matches." }],
 		details: { ...result, truncated: capped.truncated },
 	};
+}
+
+function entryLabel(entry: EntryRecord, multiRoot: boolean): string {
+	return multiRoot ? `${entry.scope}:${entry.id}` : entry.id;
+}
+
+function duplicateLines(catalog: CatalogData, multiRoot: boolean): string[] {
+	const pairs = findDuplicatePairs(catalog).slice(0, REVIEW_LIMIT);
+	if (pairs.length === 0) return [];
+	const lines = ["Duplicate candidates (id / id / similarity):"];
+	for (const pair of pairs) {
+		lines.push(`- ${entryLabel(pair.a, multiRoot)} / ${entryLabel(pair.b, multiRoot)} / ${pair.score.toFixed(2)}`);
+	}
+	return lines;
+}
+
+function staleLines(report: StaleReport, multiRoot: boolean): string[] {
+	const shown = report.entries.slice(0, REVIEW_STALE_LIMIT);
+	if (shown.length === 0) return [];
+	const lines = ["Stale entries (id / title / reason):"];
+	for (const item of shown) {
+		lines.push(`- ${entryLabel(item.entry, multiRoot)} / ${item.entry.title} / ${item.reason}: ${item.detail}`);
+	}
+	if (report.entries.length > shown.length) lines.push(`- (+${report.entries.length - shown.length} more)`);
+	return lines;
 }
 
 function issueCounts(issues: Issue[]): { errors: number; warnings: number } {
@@ -361,9 +397,30 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		notify(ctx, "pi-knowledge: capture requested", "info");
 	};
 
+	const reviewCandidates = (ctx: ExtensionContext): string | null => {
+		if (catalog === null || config === null) return null;
+		const multiRoot = roots.length > 1;
+		const lines = [
+			...duplicateLines(catalog, multiRoot),
+			...staleLines(staleReport(catalog, config, ctx.cwd, new Date()), multiRoot),
+		];
+		return lines.length === 0 ? null : lines.join("\n");
+	};
+
+	const runReview = async (ctx: ExtensionContext, rest: string[]): Promise<void> => {
+		const candidates = reviewCandidates(ctx);
+		if (candidates === null) {
+			notify(ctx, "pi-knowledge: nothing to review", "info");
+			return;
+		}
+		const focus = rest.length > 0 ? `\nFocus: ${rest.join(" ")}` : "";
+		await pi.sendUserMessage(`${REVIEW_PROMPT}\n\n${candidates}${focus}`, { deliverAs: "followUp" });
+		notify(ctx, "pi-knowledge: review requested", "info");
+	};
+
 	pi.registerCommand("kb", {
 		description:
-			"pi-knowledge: status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | docs | bench | capture [focus]",
+			"pi-knowledge: status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
 		handler: async (args, ctx) => {
 			if (config === null || !config.enabled) {
 				notify(ctx, "pi-knowledge: disabled", "info");
@@ -374,11 +431,15 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 				await runCapture(ctx, rest);
 				return;
 			}
+			if (action === "review") {
+				await runReview(ctx, rest);
+				return;
+			}
 			const text = await report(action, rest, ctx);
 			if (text === null) {
 				notify(
 					ctx,
-					"usage: /kb status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | docs | bench | capture [focus]",
+					"usage: /kb status | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
 					"warning",
 				);
 				return;

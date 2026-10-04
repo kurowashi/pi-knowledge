@@ -7,9 +7,11 @@
  *   key:
  *     - item              (block list)
  *
- * Anything else (nested mappings, anchors, block scalars) is an error, and the
- * caller excludes the entry with a warning. This keeps the parser dependency
- * free while the format stays small and predictable.
+ * Nested mappings, unexpected indentation, and block scalars are errors, and
+ * the caller excludes the entry with a warning. Anchors and inline comments
+ * are not interpreted (they stay in the scalar); full-line comments are
+ * skipped. This keeps the parser dependency free while the format stays small
+ * and predictable.
  */
 
 export interface FrontmatterResult {
@@ -78,8 +80,9 @@ function parseLine(lines: string[], index: number): LineResult | string {
 	const key = raw.slice(0, colon).trim();
 	const rest = raw.slice(colon + 1).trim();
 	if (rest === "") return parseBlockList(lines, index, key);
+	if (/^[>|](\d?[+-]?|[+-]\d?)$/.test(rest)) return `block scalars are not supported: ${raw.trim()}`;
 	if (!rest.startsWith("[")) return { key, value: unquote(rest), next: index };
-	if (!rest.endsWith("]")) return `unterminated inline array: ${raw.trim()}`;
+	if (!rest.endsWith("]")) return `unterminated inline array (quote the value if it starts with "["): ${raw.trim()}`;
 	return { key, value: splitInline(rest.slice(1, -1)).map(unquote), next: index };
 }
 

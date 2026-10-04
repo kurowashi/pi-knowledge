@@ -10,6 +10,7 @@ Project knowledge for Pi. The plugin injects a small discovery index at session 
 - **Assigns entry IDs** and validates every `write` / `edit` to the knowledge root. No separate write tool is added.
 - **Searches** entries with `kb_search` (lexical, tag/status/scope filters).
 - **Lints and curates** entries with `kb lint` (form errors, unknown fields, dangling `[[id]]` links, stale `review_after`, duplicates, superseded-but-active entries), `kb stale`, `kb dups`, and `kb refs`.
+- **Reviews** duplicate and stale candidates with `/kb review`: the plugin hands the candidates to the agent, which applies accepted changes through the normal `write` / `edit` path. The plugin never writes entries itself.
 - **Generates a document index** with `kb docs` and checks for drift in CI with `kb docs --check`.
 
 ## Install
@@ -47,7 +48,9 @@ Then conditions, evidence, counterexamples, and uncertainty.
 | `review_after` | no | `YYYY-MM-DD` (UTC) |
 | `source` | no | URL or repo-relative path |
 
-Unknown fields stay in the file but are ignored by the catalog and reported by `kb lint`.
+Unknown frontmatter fields stay in the file, are ignored by the catalog, and are reported by `kb lint`.
+
+Frontmatter accepts plain scalars, quoted strings, inline arrays (`tags: [a, b]`), and block lists (`when:` with `- item` lines below). Full-line comments are ignored and inline `#` is kept as text; anchors are not interpreted. Nested mappings, unexpected indentation, and block scalars (`>` / `|`) fail validation. Quote values that start with `[`.
 
 ## CLI
 
@@ -58,7 +61,7 @@ kb find <tag>...        # AND filter
 kb search "query"       # lexical by default; --backend lexical|fts5|embedding|hybrid
 kb lint                 # errors and warnings (exit 1 on errors)
 kb stale                # overdue review_after / old git dates
-kb dups                 # near-duplicate candidates
+kb dups [--max N]       # near-duplicate candidates; exit 1 when pairs > N, 2 on invalid N
 kb refs <id>            # backlinks
 kb docs [--check]       # document index generation / drift check
 kb bench <fixture.json> # recall and latency for a fixture set

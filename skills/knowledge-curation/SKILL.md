@@ -27,4 +27,6 @@ Entries are self-contained Markdown notes in `knowledge/`. The plugin assigns th
 - `kb lint` reports form errors, unknown fields, dangling `[[id]]` links, stale `review_after`, duplicates, and entries that stay active after being superseded.
 - `kb dups` lists near-duplicate candidates. `kb refs <id>` lists backlinks from `[[id]]` and `supersedes`.
 - At session start, a `knowledge_lint` message lists the top findings when any exist. Fix them with `edit` in the same session.
+- `/kb review` asks you to judge duplicate and stale candidates and apply merges with `write` / `edit`; it never rewrites entries for you.
+- When `/kb review` presents candidates: read each entry, decide duplicate vs. similar, write the replacement with `supersedes`, set the old entry to `status: superseded`, and check `kb refs` for backlinks.
 - Deleting an entry is allowed when nothing references it; check `kb refs <id>` first.

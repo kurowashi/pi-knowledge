@@ -49,4 +49,12 @@ test("invalid lines, indentation, and arrays are errors", () => {
 	assert.match(parseFrontmatter("---\nnovalue\n---\n").error ?? "", /invalid frontmatter line/);
 	assert.match(parseFrontmatter("---\n  nested: x\n---\n").error ?? "", /unexpected indentation/);
 	assert.match(parseFrontmatter("---\ntags: [a, b\n---\n").error ?? "", /unterminated inline array/);
+	assert.match(parseFrontmatter("---\ntitle: [WIP] fix\n---\n").error ?? "", /unterminated inline array/);
+});
+
+test("block scalar indicators are rejected with a clear error", () => {
+	for (const value of [">", ">-", "|", "|+", ">2", "|2-", ">-2"]) {
+		const result = parseFrontmatter(`---\ntitle: ${value}\n---\n`);
+		assert.match(result.error ?? "", /block scalars are not supported/, `value ${value}`);
+	}
 });

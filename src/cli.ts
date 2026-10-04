@@ -3,9 +3,9 @@
  * kb CLI: list / tags / find / search / lint / stale / dups / refs / docs / bench.
  *
  * Uses the same config resolution, lint rules, search service, and catalog as
- * the extension. Exit codes: 0 ok, 1 lint errors / no find hits / docs drift,
- * 2 usage/config or docs read/write error, 3 `--require-backend` was given and
- * the requested backend fell back to lexical.
+ * the extension. Exit codes: 0 ok, 1 lint errors / no find hits / docs drift /
+ * duplicate pairs over `--max`, 2 usage/config or docs read/write error, 3
+ * `--require-backend` was given and the requested backend fell back to lexical.
  */
 
 import { pathToFileURL } from "node:url";
@@ -29,7 +29,7 @@ export interface CliResult {
 }
 
 export const CLI_USAGE =
-	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] [--scope S] [--backend B] [--require-backend] | lint | stale | dups | refs <id> | docs [--check] | bench <fixture.json> [--repeat N] [--backend B]>";
+	"usage: kb <list [--all] | tags | find <tag...> | search <query> [--json] [--limit N] [--status S] [--scope S] [--backend B] [--require-backend] | lint | stale | dups [--max N] | refs <id> | docs [--check] | bench <fixture.json> [--repeat N] [--backend B]>";
 
 const STATUSES: readonly (Status | "any")[] = ["active", "any", "superseded", "deprecated"];
 const BACKENDS: readonly Backend[] = ["lexical", "fts5", "embedding", "hybrid"];
@@ -188,8 +188,14 @@ function runStale(catalog: CatalogData, config: KnowledgeConfig, cwd: string, st
 	return { code: 0, stdout: formatStale(staleReport(catalog, config, cwd, new Date())), stderr };
 }
 
-function runDups(catalog: CatalogData, stderr: string): CliResult {
-	return { code: 0, stdout: formatDuplicatePairs(findDuplicatePairs(catalog)), stderr };
+function runDups(rest: string[], catalog: CatalogData, stderr: string): CliResult {
+	const pairs = findDuplicatePairs(catalog);
+	const stdout = formatDuplicatePairs(pairs);
+	const index = rest.indexOf("--max");
+	if (index === -1) return { code: 0, stdout, stderr };
+	const max = Number(rest[index + 1]);
+	if (!Number.isFinite(max) || max < 0) return usageError(stderr);
+	return { code: pairs.length > Math.floor(max) ? 1 : 0, stdout, stderr };
 }
 
 function runRefs(rest: string[], catalog: CatalogData, stderr: string): CliResult {
@@ -240,7 +246,7 @@ export async function execute(argv: string[], cwd: string): Promise<CliResult> {
 		search: () => runSearch(rest, roots, loaded.config, service, stderr),
 		lint: () => runLint(catalog, roots, cwd, stderr),
 		stale: () => runStale(catalog, loaded.config, cwd, stderr),
-		dups: () => runDups(catalog, stderr),
+		dups: () => runDups(rest, catalog, stderr),
 		refs: () => runRefs(rest, catalog, stderr),
 		docs: () => runDocsCommand(rest, cwd, loaded.config, stderr),
 		bench: () => runBenchCommand(rest, catalog, loaded.config, cwd, stderr),

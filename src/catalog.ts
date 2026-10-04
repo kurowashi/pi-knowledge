@@ -63,7 +63,8 @@ function optionalString(value: unknown): OptionalString {
 
 function readBaseFields(meta: Record<string, unknown>): BaseFields | string {
 	const title = meta["title"];
-	if (typeof title !== "string" || title.trim() === "") return "title is required";
+	if (title === undefined || (typeof title === "string" && title.trim() === "")) return "title is required";
+	if (typeof title !== "string") return "title must be text";
 	const when = toWhen(meta["when"]);
 	if (when === null) return "when must be text or a list of text";
 	const tags = toTags(meta["tags"]);

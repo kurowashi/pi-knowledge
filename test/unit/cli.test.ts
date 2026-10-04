@@ -51,6 +51,7 @@ test("search prints text and JSON with the entry path", async () => {
 		const text = await execute(["search", "alpha"], cwd);
 		assert.equal(text.code, 0);
 		assert.match(text.stdout, /Alpha/);
+		assert.match(text.stdout, /\[x\]/);
 		assert.match(text.stdout, /path:/);
 		const json = await execute(["search", "alpha", "--json"], cwd);
 		const parsed = JSON.parse(json.stdout) as { hits: unknown[] };
@@ -103,6 +104,10 @@ test("stale, dups, and refs report from the catalog", async () => {
 		const dups = await execute(["dups"], cwd);
 		assert.equal(dups.code, 0);
 		assert.match(dups.stdout, /11111111 {2}33333333 {2}0\.9/);
+		assert.equal((await execute(["dups", "--max", "1"], cwd)).code, 0);
+		assert.equal((await execute(["dups", "--max", "0"], cwd)).code, 1);
+		assert.equal((await execute(["dups", "--max", "nope"], cwd)).code, 2);
+		assert.equal((await execute(["dups", "--max"], cwd)).code, 2);
 		const refs = await execute(["refs", "11111111"], cwd);
 		assert.equal(refs.code, 0);
 		assert.match(refs.stdout, /no references/);

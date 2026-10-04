@@ -162,7 +162,7 @@ test("a new entry gets an id and becomes searchable in the same session", async 
 		h.emit("session_start", session());
 		const input: Record<string, unknown> = {
 			path: "knowledge/new-note.md",
-			content: entryText({ title: "Fresh" }, BODY),
+			content: entryText({ title: "Fresh", tags: ["x"] }, BODY),
 		};
 		h.emit("tool_call", { type: "tool_call", toolName: "write", toolCallId: "t1", input });
 		assert.match(String(input["path"]), /knowledge[/\\][0-9a-f]{8}\.md$/);
@@ -178,6 +178,7 @@ test("a new entry gets an id and becomes searchable in the same session", async 
 		});
 		const result = await h.search({ query: "fresh" });
 		assert.match(result.content[0]?.text ?? "", /Fresh/);
+		assert.match(result.content[0]?.text ?? "", /\[x\]/);
 		assert.deepEqual(h.notifications, []);
 	});
 });
@@ -290,6 +291,43 @@ test("capture respects the disabled mode", async () => {
 		await h.run("capture");
 		assert.equal(h.sent.length, 0);
 		assert.match(h.notifications.at(-1) ?? "", /capture is disabled/);
+	});
+});
+
+test("review sends duplicate candidates to the agent", async () => {
+	await withProject(async (cwd) => {
+		const dir = path.join(cwd, "knowledge");
+		writeEntry(dir, "11111111", { title: "Same" }, BODY);
+		writeEntry(dir, "22222222", { title: "Same" }, BODY);
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		await h.run("review");
+		assert.equal(h.sent.length, 1);
+		assert.match(h.sent[0] ?? "", /11111111 \/ 22222222/);
+		assert.match(h.sent[0] ?? "", /superseded/);
+	});
+});
+
+test("review reports when there is nothing to review", async () => {
+	await withProject(async (cwd) => {
+		writeEntry(path.join(cwd, "knowledge"), "11111111", { title: "Unique" }, BODY);
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		await h.run("review");
+		assert.equal(h.sent.length, 0);
+		assert.match(h.notifications.at(-1) ?? "", /nothing to review/);
+	});
+});
+
+test("review includes stale candidates and the focus", async () => {
+	await withProject(async (cwd) => {
+		writeEntry(path.join(cwd, "knowledge"), "11111111", { title: "Old", review_after: "2020-01-01" }, BODY);
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		await h.run("review tidy stale");
+		assert.equal(h.sent.length, 1);
+		assert.match(h.sent[0] ?? "", /review_after: 2020-01-01/);
+		assert.match(h.sent[0] ?? "", /Focus: tidy stale/);
 	});
 });
 

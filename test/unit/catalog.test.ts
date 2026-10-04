@@ -68,6 +68,11 @@ test("parse and type errors exclude the entry", () => {
 	}
 });
 
+test("a bracketed title reports text, not a missing title", () => {
+	const result = parseEntryText(`---\ntitle: [Draft]\n---\n${BODY}`, "01234567", makeRoot("/k"), "/k/x.md", 0, 0);
+	assert.match(result.invalid ?? "", /title must be text/);
+});
+
 test("a minimal valid entry parses", () => {
 	const result = parseEntryText(`---\ntitle: T\n---\nbody`, "01234567", makeRoot("/k"), "/k/x.md", 0, 0);
 	assert.equal(result.invalid, null);
