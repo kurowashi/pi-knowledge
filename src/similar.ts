@@ -8,7 +8,7 @@
 
 import type { CatalogData, EntryRecord } from "./types.ts";
 
-export const DUPLICATE_THRESHOLD = 0.6;
+const DUPLICATE_THRESHOLD = 0.6;
 
 function tokenSet(text: string): Set<string> {
 	const words = text.toLowerCase().split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9fff]+/);
@@ -22,7 +22,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 	return shared / (a.size + b.size - shared);
 }
 
-export function entryTokens(entry: EntryRecord): Set<string> {
+function entryTokens(entry: EntryRecord): Set<string> {
 	return tokenSet(`${entry.title} ${entry.when.join(" ")} ${entry.tags.join(" ")} ${entry.body}`);
 }
 

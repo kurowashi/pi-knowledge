@@ -60,11 +60,11 @@ interface SqliteModule {
 	DatabaseSync: new (location: string) => SqliteDb;
 }
 
-export type DynamicImport = () => Promise<unknown>;
+type DynamicImport = () => Promise<unknown>;
 
 let sqliteModule: Promise<SqliteModule | null> | null = null;
 
-export function loadSqlite(importer: DynamicImport = () => import("node:sqlite")): Promise<SqliteModule | null> {
+function loadSqlite(importer: DynamicImport = () => import("node:sqlite")): Promise<SqliteModule | null> {
 	if (sqliteModule === null) {
 		sqliteModule = importer()
 			.then((mod) => mod as unknown as SqliteModule)

@@ -15,7 +15,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Backend, Enforce, RootConfig, Scope } from "./types.ts";
 
-export interface InjectionConfig {
+interface InjectionConfig {
 	enabled: boolean;
 	maxTokens: number;
 	floorTokens: number;
@@ -29,16 +29,16 @@ export interface EmbeddingConfig {
 	timeoutMs: number;
 }
 
-export interface SearchConfig {
+interface SearchConfig {
 	backend: Backend;
 	embedding: EmbeddingConfig;
 }
 
-export interface CaptureConfig {
+interface CaptureConfig {
 	mode: "off" | "manual";
 }
 
-export interface DocsConfig {
+interface DocsConfig {
 	path: string;
 	include: string[];
 	exclude: string[];
@@ -58,7 +58,7 @@ export interface KnowledgeConfig {
 	cache: { enabled: boolean };
 }
 
-export const CONFIG_FILE_NAME = "knowledge.json";
+const CONFIG_FILE_NAME = "knowledge.json";
 
 export const DEFAULT_CONFIG: KnowledgeConfig = {
 	enabled: true,
@@ -76,7 +76,7 @@ export const DEFAULT_CONFIG: KnowledgeConfig = {
 	cache: { enabled: true },
 };
 
-export function agentDir(): string {
+function agentDir(): string {
 	const override = process.env["PI_CODING_AGENT_DIR"]?.trim();
 	return override && override.length > 0 ? override : path.join(os.homedir(), ".pi", "agent");
 }

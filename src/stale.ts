@@ -9,7 +9,7 @@ import * as path from "node:path";
 import type { KnowledgeConfig } from "./config.ts";
 import type { CatalogData, EntryRecord } from "./types.ts";
 
-export interface StaleEntry {
+interface StaleEntry {
 	entry: EntryRecord;
 	reason: "review_after" | "git_date";
 	detail: string;

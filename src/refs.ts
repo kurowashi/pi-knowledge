@@ -6,7 +6,7 @@
 import { extractLinks } from "./lint.ts";
 import type { CatalogData, EntryRecord } from "./types.ts";
 
-export interface Reference {
+interface Reference {
 	from: EntryRecord;
 	kind: "link" | "supersedes";
 }

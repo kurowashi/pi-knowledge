@@ -10,7 +10,7 @@ import type { EntryRecord, FallbackReason } from "./types.ts";
 
 const BODY_INDEX_LIMIT = 64 * 1024;
 
-export interface EmbeddingResponse {
+interface EmbeddingResponse {
 	data?: Array<{ embedding?: number[] }>;
 	usage?: { prompt_tokens?: number; total_tokens?: number };
 }

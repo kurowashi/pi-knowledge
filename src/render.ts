@@ -24,7 +24,7 @@ const TITLE_LIMIT = 120;
 const TITLE_COMPACT_LIMIT = 60;
 const WHEN_LIMIT = 200;
 
-export type Tier = "full" | "title" | "pointer";
+type Tier = "full" | "title" | "pointer";
 
 export interface RenderedIndex {
 	text: string;

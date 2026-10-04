@@ -9,6 +9,7 @@ const ALLOWED_DEV = [
 	"@biomejs/biome",
 	"@earendil-works/pi-coding-agent",
 	"@types/node",
+	"knip",
 	"lefthook",
 	"typebox",
 	"typescript",
