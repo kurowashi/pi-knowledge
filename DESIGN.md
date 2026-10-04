@@ -389,7 +389,7 @@ source: docs/api.md
 | 索引の1行 | 毎リクエスト | 典型 88 / 最悪 493 トークン(§10.3) |
 | `kb_search` のツール宣言(provider へ送る JSON Schema を含む) | 毎リクエスト | ≤ 500 トークン |
 | `knowledge-curation` のスキルブロック(pi が注入する name + description + location + 定型文) | 毎リクエスト | ≤ 300 トークン |
-| lint サマリ(`knowledge_lint` custom message) | session_start に1回のみ | ≤ 300 トークン(常時予算に含めない) |
+| lint サマリ(`knowledge_lint` custom message) | session_start ごとに1回 | ≤ 300 トークン(常時予算に含めない) |
 | recall ヒント | 一致ターンのみ。既定 off | ≤ 60 トークン(常時予算に含めない) |
 
 索引を除く常時固定オーバーヘッドは文書上限で 110 + 50 + 500 + 300 = 960 トークンです。実測は 105(固定文) + 9(Roots 1個) + 469(ツール宣言) + 269(スキル) = 852 トークンです。ツール宣言は provider の function calling、スキルブロックは pi が注入する分も会計に含めます。固定文・ツール宣言・スキル説明はパッケージ定数とし、contract test が各トークン上限を検証します。超過したパッケージはリリースしません。document index は注入しません。検索結果の上限は §9.3 です。

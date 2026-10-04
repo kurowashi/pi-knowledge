@@ -331,6 +331,24 @@ test("review includes stale candidates and the focus", async () => {
 	});
 });
 
+test("review labels candidates with scope:id in a multi-root setup", async () => {
+	await withProject(async (cwd) => {
+		writeEntry(path.join(cwd, "knowledge"), "11111111", { title: "Same" }, BODY);
+		writeEntry(path.join(cwd, "user"), "22222222", { title: "Same" }, BODY);
+		writeConfig(cwd, {
+			roots: [
+				{ path: "knowledge", scope: "project" },
+				{ path: "user", scope: "user" },
+			],
+		});
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		await h.run("review");
+		assert.equal(h.sent.length, 1);
+		assert.match(h.sent[0] ?? "", /project:11111111 \/ user:22222222/);
+	});
+});
+
 test("recall hint is added once per session", async () => {
 	await withProject(async (cwd) => {
 		writeEntry(path.join(cwd, "knowledge"), "11111111", { title: "Alpha" }, BODY);
