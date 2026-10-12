@@ -80,6 +80,14 @@ function postWriteNotes(knowledge: Knowledge, tool: string, filePath: unknown): 
 	return [];
 }
 
+/** State a backend fallback in the result text so it is never silent. */
+function fallbackNote(details: unknown, text: string): string {
+	const result = details as { fallback?: boolean; fallbackReason?: string; backend?: string } | null;
+	if (result?.fallback !== true) return text;
+	const note = `kb: backend ${result.backend ?? "lexical"} used; the requested backend was unavailable (${result.fallbackReason ?? "unavailable"})`;
+	return text === "" ? note : `${text}\n${note}`;
+}
+
 /** One lint message per session, but never an unbounded set of session ids. */
 const ANNOUNCED_LIMIT = 500;
 
@@ -158,7 +166,11 @@ const plugin: Plugin = {
 			input: SEARCH_INPUT,
 			async execute(input) {
 				const result = await knowledge.search(input as SearchParams);
-				return { content: result.content.map((part) => part.text).join("\n") };
+				const text = result.content.map((part) => part.text).join("\n");
+				// OpenCode has no details field on the tool result, so a backend
+				// fallback is stated in the content instead of staying silent
+				// (DESIGN.md §9.1).
+				return { content: fallbackNote(result.details, text) };
 			},
 		};
 		await ctx.tool.transform((editor) => {

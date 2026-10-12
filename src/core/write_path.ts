@@ -11,12 +11,11 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CatalogData, Enforce, ResolvedRoot } from "./types.ts";
+import type { Enforce, ResolvedRoot } from "./types.ts";
 
 export interface WriteContext {
 	cwd: string;
 	roots: ResolvedRoot[];
-	catalog: CatalogData;
 	enforce: Enforce;
 }
 

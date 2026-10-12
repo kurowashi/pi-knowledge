@@ -77,6 +77,18 @@ test("cosine handles identical, orthogonal, and empty vectors", () => {
 	assert.equal(cosine([0, 0], [1, 0]), 0);
 });
 
+test("a search never comes back empty because a backend was unavailable", async () => {
+	const catalog = catalogOf([makeEntry({ id: "pi_retry_budget", title: "Retry budget", body: BODY })]);
+	for (const backend of ["fts5", "embedding", "hybrid"] as const) {
+		const service = new SearchService(catalog, DEFAULT_CONFIG);
+		const result = await service.search(searchOptions({ query: "retry" }), backend);
+		if (result.backend === backend) continue;
+		assert.equal(result.fallback, true, `${backend} must report a fallback`);
+		assert.ok(result.fallbackReason, `${backend} must say why it fell back`);
+		assert.ok(result.hits.length > 0, "lexical still answers");
+	}
+});
+
 test("FTS5 search ranks matching entries when available", async (t) => {
 	const entry = makeEntry({ id: "11111111", title: "Alpha" });
 	const index = new FtsIndex(catalogOf([entry]));

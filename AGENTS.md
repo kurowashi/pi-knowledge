@@ -40,8 +40,8 @@
 | readonly root へのファイルツールの書き込みは `write.enforce: "warn"` でも拒否する。shell 経由は既知の gap | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
 | root 外と `.md` 以外には干渉しない | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
 | 書き込み前の内容検証をしない。`edit` と `patch` には介入しない | `test/integration/extension.test.ts` | `src/core/engine.ts` |
-| 書き込み後に lint の error/warning をツール結果に添える | `test/integration/extension.test.ts` | `src/core/engine.ts` |
-| ID 規則に合わないファイルは書き込み直後に catalog から外し、警告する | `test/integration/opencode.test.ts` | `src/core/engine.ts` |
+| `write` / `edit` の後に lint の error/warning をツール結果に添える。shell は再走査のみ | `test/integration/extension.test.ts` + `test/integration/opencode.test.ts` | `src/core/engine.ts` |
+| ID 規則に合わないファイルは書き込み直後に invalid として記録し、ツール結果に error として出す | `test/integration/opencode.test.ts` + `test/unit/lint.test.ts` | `src/core/engine.ts`、`src/core/catalog.ts` |
 | catalog が変わったら検索サービスを必ず作り直す | `test/integration/opencode.test.ts` | `src/core/engine.ts` |
 | opencode の hook は Pi と同じ判定を行う(index 注入・拒否・通知・コマンド) | `test/integration/opencode.test.ts` | `src/hosts/opencode.ts` |
 | 注入はセッション開始と compaction 後に再生成し、それ以外のセッション中は更新しない | `test/integration/extension.test.ts` | `src/core/engine.ts` |
@@ -62,9 +62,11 @@
 | 候補は上限を超える件数を必ず開示し、`scope:id` 参照は自スコープにだけ効く | `test/unit/review.test.ts` | `src/core/review.ts` |
 | `kb dups --max N` は候補ペアが N 超で終了コード1 | `test/unit/cli.test.ts` | `src/cli.ts` |
 | 検索結果の content は tags を含む | `test/integration/extension.test.ts` | `src/core/format.ts` |
-| 利用不可の backend は lexical へフォールバックし、理由を必ず表示する | `test/unit/search_service.test.ts` | `src/core/search_service.ts` |
 | embedding 失敗は分類され、検索を止めない | `test/unit/search_service.test.ts` | `src/core/backend_embedding.ts` |
-| FTS5 が無い環境でも lexical で動く | `test/unit/search_service.test.ts` | `src/core/backend_fts.ts` |
+| backend が使えないとき結果は空にせず、lexical で答え、fallback と理由を必ず示す | `test/unit/search_service.test.ts` | `src/core/search_service.ts` |
+| OpenCode でも fallback をツール結果の本文で示す | `test/integration/opencode.test.ts` | `src/hosts/opencode.ts` |
+| `enabled: false` は全機能を無効化し、`/kb status` だけ残す | `test/integration/extension.test.ts` + `test/integration/opencode.test.ts` | `src/core/engine.ts` |
+| `/kb config` は解決済み設定を JSON で返す | `test/integration/extension.test.ts` | `src/core/report.ts` |
 
 ### 設定
 
@@ -73,7 +75,8 @@
 | 設定はグローバル→プロジェクトの順にマージし、project が優先 | `test/unit/config.test.ts` | `src/core/config.ts` |
 | 未信頼プロジェクトの設定は無視する | `test/unit/config.test.ts` | `src/core/config.ts` |
 | 壊れた設定は警告して既定値で動き、セッションを止めない | `test/unit/config.test.ts` | `src/core/config.ts` |
-| `kb` は host を選ばず、両 host の global と project 設定を解決する | `test/unit/config.test.ts` | `src/core/config.ts` |
+| 型不正・範囲不正の設定値は警告して既定値へ戻す | `test/unit/config.test.ts` | `src/core/config.ts` |
+| `kb` は host を選ばず、global 2ファイルと project 2ファイルを順に解決する | `test/unit/config.test.ts` | `src/core/config.ts` |
 | キャッシュディレクトリだけ host ごとに違う | `test/unit/config.test.ts` | `src/core/config.ts` |
 | 同一 scope の root は優先度の高い1つだけ有効。有効 root は最大3 | `test/unit/roots.test.ts` | `src/core/roots.ts` |
 | `floorTokens` > `maxTokens` は `maxTokens` に補正する | `test/unit/config.test.ts` | `src/core/config.ts` |

@@ -35,12 +35,12 @@ export function resolveRoots(cwd: string, roots: RootConfig[], warnings: string[
 	const resolved: ResolvedRoot[] = [];
 	for (const root of roots) {
 		if (!displayIsSafe(root.path)) {
-			warnings.push(`knowledge: root path contains unsafe characters for the Roots line: ${root.path}`);
+			warnings.push(`root path contains unsafe characters for the Roots line: ${root.path}`);
 			continue;
 		}
 		const dir = resolveDir(cwd, root.path);
 		if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
-			warnings.push(`knowledge: root is not a directory: ${root.path}`);
+			warnings.push(`root is not a directory: ${root.path}`);
 			continue;
 		}
 		resolved.push({ display: root.path, scope: root.scope, dir, priority: root.priority, readonly: root.readonly });
@@ -52,7 +52,7 @@ export function resolveRoots(cwd: string, roots: RootConfig[], warnings: string[
 	for (const candidate of resolved) {
 		const container = kept.find((root) => isAncestorOrSame(root.dir, candidate.dir));
 		if (container) {
-			warnings.push(`knowledge: root ${candidate.display} is inside ${container.display}; disabling it`);
+			warnings.push(`root ${candidate.display} is inside ${container.display}; disabling it`);
 			continue;
 		}
 		kept.push(candidate);
@@ -66,7 +66,7 @@ export function resolveRoots(cwd: string, roots: RootConfig[], warnings: string[
 			byScope.set(root.scope, root);
 			continue;
 		}
-		warnings.push(`knowledge: only one ${root.scope} root is active; disabling ${root.display}`);
+		warnings.push(`only one ${root.scope} root is active; disabling ${root.display}`);
 	}
 	return [...byScope.values()];
 }

@@ -13,8 +13,8 @@ import {
 	buildCatalog,
 	ID_RULE,
 	isValidEntryId,
+	markInvalid,
 	parseEntryFile,
-	removeEntry,
 	rescanCatalog,
 	upsertEntry,
 } from "./catalog.ts";
@@ -258,12 +258,7 @@ export class Knowledge {
 
 	private writeContext(): WriteContext | null {
 		if (this.config === null || this.catalog === null) return null;
-		return {
-			cwd: this.options.cwd,
-			roots: this.roots,
-			catalog: this.catalog,
-			enforce: this.config.write.enforce,
-		};
+		return { cwd: this.options.cwd, roots: this.roots, enforce: this.config.write.enforce };
 	}
 
 	/**
@@ -289,8 +284,9 @@ export class Knowledge {
 	 */
 	afterWrite(filePath: unknown): string[] {
 		if (this.catalog === null) return [];
-		if (typeof filePath === "string") this.refreshTarget(filePath);
-		return this.notesFor(filePath);
+		if (typeof filePath !== "string") return [];
+		const problems = this.refreshTarget(filePath);
+		return [...problems, ...this.notesFor(filePath)];
 	}
 
 	/** Refresh the whole catalog after a shell command changed files. */
@@ -300,29 +296,27 @@ export class Knowledge {
 		this.service = this.makeService();
 	}
 
-	private refreshTarget(filePath: unknown): void {
-		if (typeof filePath !== "string" || this.catalog === null) return;
+	/** Re-read one entry. Returns the reasons it is not a usable entry. */
+	private refreshTarget(filePath: string): string[] {
+		if (this.catalog === null) return [];
 		const target = findKnowledgeTarget(filePath, this.options.cwd, this.roots);
-		if (target === null || target.nested) return;
+		if (target === null || target.nested) return [];
 		const abs = path.join(target.root.dir, `${target.id}.md`);
 		// A scan only accepts names that match the id rule (DESIGN.md §6.3), so a
-		// badly named file must leave the catalog here too. Otherwise the model
+		// badly named file is recorded as invalid here too. Otherwise the model
 		// searches an entry that the next scan silently drops.
 		if (!isValidEntryId(target.id)) {
-			this.catalog = removeEntry(this.catalog, abs, this.roots);
+			const reason = `does not match the entry id rule (${ID_RULE}); not an entry`;
+			this.catalog = markInvalid(this.catalog, abs, reason, this.roots);
 			this.service = this.makeService();
-			this.host.notify(
-				`knowledge: ${path.basename(filePath)} does not match the entry id rule (${ID_RULE}); not an entry`,
-				"warning",
-			);
-			return;
+			return [`error: ${path.basename(filePath)} ${reason}`];
 		}
 		const result = parseEntryFile(abs, target.root);
 		this.catalog = result.entry
 			? upsertEntry(this.catalog, result.entry, this.roots)
-			: removeEntry(this.catalog, abs, this.roots);
-		if (result.invalid !== null) this.host.notify(`knowledge: entry not usable: ${result.invalid}`, "warning");
+			: markInvalid(this.catalog, abs, result.invalid ?? "invalid entry", this.roots);
 		this.service = this.makeService();
+		return result.entry === null && result.invalid !== null ? [`error: entry is not usable: ${result.invalid}`] : [];
 	}
 
 	/** Lint notes for the entry a tool just wrote or edited. */

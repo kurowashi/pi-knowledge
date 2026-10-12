@@ -270,7 +270,7 @@ test("post-write lint findings are prepended to the tool result", async () => {
 	});
 });
 
-test("a badly named entry leaves the catalog and says so", async () => {
+test("a badly named entry leaves the catalog and is reported in the tool result", async () => {
 	await withProject(async (cwd) => {
 		fs.mkdirSync(join(cwd, "knowledge"), { recursive: true });
 		const loaded = await load(cwd);
@@ -286,10 +286,74 @@ test("a badly named entry leaves the catalog and says so", async () => {
 			result: { content: "wrote 1 file" },
 		};
 		loaded.hooks.after?.(event);
+		const content = event.result.content as unknown as Array<{ text: string }>;
+		assert.match(content[0]?.text ?? "", /kb: error: Bad-Name\.md does not match the entry id rule/);
 		const tool = loaded.tools.get("kb_search");
 		assert.ok(tool);
 		const hits = await tool.execute({ query: "Bad" }, { signal: new AbortController().signal });
 		assert.equal(hits.content ?? "", "No matches.", "a file the scan rejects must not be searchable");
+	});
+});
+
+test("an unparsable entry is reported as an error note, not a warning", async () => {
+	await withProject(async (cwd) => {
+		fs.mkdirSync(join(cwd, "knowledge"), { recursive: true });
+		const loaded = await load(cwd);
+		fs.writeFileSync(join(cwd, "knowledge", "pi_broken_entry.md"), "no frontmatter");
+		const event: AfterEvent = {
+			tool: "write",
+			sessionID: "ses_1",
+			agent: "build",
+			messageID: "m1",
+			id: "c1",
+			input: { path: "knowledge/pi_broken_entry.md" },
+			status: "completed",
+			result: { content: "wrote 1 file" },
+		};
+		loaded.hooks.after?.(event);
+		const content = event.result.content as unknown as Array<{ text: string }>;
+		assert.match(content[0]?.text ?? "", /kb: error: entry is not usable/);
+	});
+});
+
+test("patch is not intercepted: no notes, and the entry arrives with the next scan", async () => {
+	await withProject(async (cwd) => {
+		fs.mkdirSync(join(cwd, "knowledge"), { recursive: true });
+		const loaded = await load(cwd);
+		fs.writeFileSync(join(cwd, "knowledge", "pi_patched_entry.md"), entryText({ title: "Patched" }, BODY));
+		const event: AfterEvent = {
+			tool: "patch",
+			sessionID: "ses_1",
+			agent: "build",
+			messageID: "m1",
+			id: "c1",
+			input: { patchText: "*** Add File: knowledge/pi_patched_entry.md" },
+			status: "completed",
+			result: { content: "applied 1 patch" },
+		};
+		loaded.hooks.after?.(event);
+		assert.equal(event.result.content, "applied 1 patch", "the result is untouched");
+		const tool = loaded.tools.get("kb_search");
+		assert.ok(tool);
+		const hits = await tool.execute({ query: "Patched" }, { signal: new AbortController().signal });
+		assert.equal(hits.content ?? "", "No matches.", "the entry is not in the catalog yet");
+		loaded.hooks.compaction?.();
+		const after = await tool.execute({ query: "Patched" }, { signal: new AbortController().signal });
+		assert.match(after.content ?? "", /Patched/, "the next scan picks it up");
+	});
+});
+
+test("a backend fallback is stated in the result instead of staying silent", async () => {
+	await withProject(async (cwd) => {
+		writeEntry(join(cwd, "knowledge"), "pi_retry_budget", { title: "Alpha" }, BODY);
+		fs.mkdirSync(join(cwd, ".opencode"), { recursive: true });
+		fs.writeFileSync(join(cwd, ".opencode", "knowledge.json"), JSON.stringify({ search: { backend: "embedding" } }));
+		const loaded = await load(cwd);
+		const tool = loaded.tools.get("kb_search");
+		assert.ok(tool);
+		const hits = await tool.execute({ query: "Alpha", backend: "embedding" }, { signal: new AbortController().signal });
+		assert.match(hits.content ?? "", /Alpha/);
+		assert.match(hits.content ?? "", /kb: backend lexical used/, "the fallback must be visible");
 	});
 });
 

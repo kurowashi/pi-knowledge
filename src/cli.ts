@@ -264,7 +264,7 @@ if (invoked !== undefined && import.meta.url === pathToFileURL(invoked).href) {
 	void execute(process.argv.slice(2), process.cwd()).then(
 		(result) => {
 			if (result.stdout) process.stdout.write(`${result.stdout}\n`);
-			if (result.stderr) process.stderr.write(result.stderr);
+			if (result.stderr) process.stderr.write(`${result.stderr}\n`);
 			process.exitCode = result.code;
 		},
 		(error: unknown) => {

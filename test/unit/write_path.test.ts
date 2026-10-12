@@ -4,10 +4,10 @@ import * as path from "node:path";
 import test from "node:test";
 import type { WriteContext } from "../../src/core/write_path.ts";
 import { findKnowledgeTarget, planWrite } from "../../src/core/write_path.ts";
-import { catalogOf, makeRoot, withTempDir, writeEntry } from "../helpers/fixtures.ts";
+import { makeRoot, withTempDir, writeEntry } from "../helpers/fixtures.ts";
 
 function context(cwd: string, dir: string, enforce: "block" | "warn" = "block"): WriteContext {
-	return { cwd, roots: [makeRoot(dir)], catalog: catalogOf([]), enforce };
+	return { cwd, roots: [makeRoot(dir)], enforce };
 }
 
 test("findKnowledgeTarget detects in-root, nested, and outside paths", () => {

@@ -79,18 +79,24 @@ test("a minimal valid entry parses", () => {
 	assert.equal(result.entry?.title, "T");
 });
 
-test("buildCatalog skips non-entry names and collects invalid entries", () => {
+test("buildCatalog accepts slugs and legacy ids and reports bad names as invalid", () => {
 	withTempDir((cwd) => {
 		const dir = path.join(cwd, "knowledge");
 		writeEntry(dir, "pi_retry_budget", { title: "Good" }, BODY);
 		writeEntry(dir, "01234567", { title: "Legacy id" }, BODY);
 		fs.writeFileSync(path.join(dir, "README.md"), "# docs");
 		fs.writeFileSync(path.join(dir, "Not An Id.md"), "no frontmatter here");
+		fs.writeFileSync(path.join(dir, "pi_broken_entry.md"), "no frontmatter");
 		const warnings: string[] = [];
 		const catalog = buildCatalog([makeRoot(dir)], warnings);
 		assert.equal(catalog.entries.length, 2, "slugs and legacy hex8 ids are both entries");
-		assert.equal(catalog.invalid.length, 0, "an invalid name is skipped, not parsed");
-		assert.ok(warnings.some((warning) => warning.includes("does not match the entry id rule")));
+		const invalid = catalog.invalid.map((item) => path.basename(item.path));
+		assert.deepEqual(invalid.sort(), ["Not An Id.md", "README.md", "pi_broken_entry.md"]);
+		assert.ok(
+			catalog.invalid.some((item) => item.reason.includes("does not match the entry id rule")),
+			"a bad name is invalid, so kb lint fails CI on it",
+		);
+		assert.ok(warnings.some((warning) => warning.includes("is not an entry")));
 	});
 });
 

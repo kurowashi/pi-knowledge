@@ -105,14 +105,18 @@ test("lintCatalog reports invalid entries as errors", () => {
 	});
 });
 
-test("lintCatalog ignores markdown whose name is not a valid entry id", () => {
+test("lintCatalog reports a bad entry name as an error and nested markdown as a warning", () => {
 	withTempDir((cwd) => {
 		const dir = path.join(cwd, "knowledge");
 		writeEntry(dir, "Not_An_Id", { title: "Bad name" }, BODY);
-		const warnings: string[] = [];
-		const catalog = buildCatalog([makeRoot(dir)], warnings);
-		assert.equal(catalog.entries.length, 0);
-		assert.ok(warnings.some((warning) => warning.includes("does not match the entry id rule")));
+		fs.mkdirSync(path.join(dir, "sub"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "sub", "note.md"), entryText({ title: "Nested" }, BODY));
+		const roots = [makeRoot(dir)];
+		const issues = lintCatalog(buildCatalog(roots, []), roots, NOW);
+		const badName = issues.find((issue) => issue.message.includes("does not match the entry id rule"));
+		assert.equal(badName?.level, "error", "a file the scan drops must fail kb lint");
+		const nested = issues.find((issue) => issue.message.includes("nested markdown"));
+		assert.equal(nested?.level, "warning");
 	});
 });
 

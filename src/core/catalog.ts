@@ -3,8 +3,9 @@
  *
  * A `.md` directly under a root whose filename matches the entry-id pattern is
  * an entry. The model names the id when it writes the file (DESIGN.md §6.3);
- * this module only recognizes it. Parse or type errors exclude the entry from
- * the catalog (`invalid`).
+ * this module only recognizes it. A `.md` whose name does not match, or which
+ * cannot be parsed, is an *invalid* entry: it is reported by `kb lint` as an
+ * error and stays out of the catalog, search, and injection.
  */
 
 import * as fs from "node:fs";
@@ -191,15 +192,13 @@ function isInvalid(item: EntryRecord | InvalidEntry): item is InvalidEntry {
 function scanFile(
 	root: ResolvedRoot,
 	name: string,
-	warnings: string[],
 	cache: Map<string, EntryRecord> | undefined,
-): EntryRecord | InvalidEntry | null {
+): EntryRecord | InvalidEntry {
 	const id = name.slice(0, -3);
-	if (!isValidEntryId(id)) {
-		warnings.push(`knowledge: ${root.display}/${name} does not match the entry id rule (${ID_RULE}); not an entry`);
-		return null;
-	}
 	const filePath = path.join(root.dir, name);
+	if (!isValidEntryId(id)) {
+		return { path: filePath, reason: `does not match the entry id rule (${ID_RULE}); not an entry` };
+	}
 	const cached = cache?.get(filePath);
 	if (cached && isUnchanged(filePath, cached)) return cached;
 	const result = parseEntryFile(filePath, root);
@@ -215,17 +214,18 @@ function scanRoot(
 	try {
 		dirents = fs.readdirSync(root.dir, { withFileTypes: true });
 	} catch (error) {
-		warnings.push(`knowledge: cannot read ${root.display}: ${error instanceof Error ? error.message : error}`);
+		warnings.push(`cannot read ${root.display}: ${error instanceof Error ? error.message : error}`);
 		return { entries: [], invalid: [] };
 	}
 	const entries: EntryRecord[] = [];
 	const invalid: InvalidEntry[] = [];
 	for (const dirent of dirents) {
 		if (!dirent.isFile() || !dirent.name.endsWith(".md")) continue;
-		const item = scanFile(root, dirent.name, warnings, cache);
-		if (item === null) continue;
-		if (isInvalid(item)) invalid.push(item);
-		else entries.push(item);
+		const item = scanFile(root, dirent.name, cache);
+		if (isInvalid(item)) {
+			invalid.push(item);
+			warnings.push(`${root.display}/${dirent.name} is not an entry: ${item.reason}`);
+		} else entries.push(item);
 	}
 	return { entries, invalid };
 }
@@ -263,4 +263,14 @@ export function removeEntry(data: CatalogData, filePath: string, roots: Resolved
 	const next = rebuildLookup(entries, roots);
 	next.invalid = data.invalid.filter((item) => item.path !== filePath);
 	return next;
+}
+
+/**
+ * Record a file that is not a usable entry (bad name or unparsable) so
+ * `kb lint` reports it until the next scan, exactly like a scan-time failure.
+ */
+export function markInvalid(data: CatalogData, filePath: string, reason: string, roots: ResolvedRoot[]): CatalogData {
+	const without = removeEntry(data, filePath, roots);
+	without.invalid = [...without.invalid, { path: filePath, reason }];
+	return without;
 }

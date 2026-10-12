@@ -138,6 +138,27 @@ test("each host resolves its own cache directory but keeps its own config source
 	});
 });
 
+test("kb reads both hosts' global and project config, in that order", () => {
+	withTempDir((cwd) => {
+		const agent = path.join(cwd, "agent");
+		const xdg = path.join(cwd, "xdg");
+		fs.mkdirSync(agent, { recursive: true });
+		fs.mkdirSync(path.join(xdg, "opencode"), { recursive: true });
+		fs.mkdirSync(path.join(cwd, ".pi"), { recursive: true });
+		withEnv({ PI_CODING_AGENT_DIR: agent, XDG_CONFIG_HOME: xdg }, () => {
+			fs.writeFileSync(piGlobalConfigFile(), JSON.stringify({ stale: { days: 1 }, docs: { maxLines: 10 } }));
+			fs.writeFileSync(
+				path.join(xdg, "opencode", "knowledge.json"),
+				JSON.stringify({ stale: { days: 2 }, docs: { maxLines: 20 } }),
+			);
+			fs.writeFileSync(path.join(cwd, ".pi", "knowledge.json"), JSON.stringify({ stale: { days: 3 } }));
+			const config = loadConfig(cwd, true, SHARED_HOST_PATHS).config;
+			assert.equal(config.docs.maxLines, 20, "the OpenCode global overrides the Pi one");
+			assert.equal(config.stale.days, 3, "a project config overrides every global");
+		});
+	});
+});
+
 test("kb reads both hosts' project config so CI matches the agent", () => {
 	withTempDir((cwd) => {
 		fs.mkdirSync(path.join(cwd, ".pi"), { recursive: true });

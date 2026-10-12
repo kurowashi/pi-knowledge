@@ -149,21 +149,21 @@ export function deepMerge(base: Record<string, unknown>, over: Record<string, un
 function boolOr(value: unknown, key: string, fallback: boolean, warnings: string[]): boolean {
 	if (value === undefined) return fallback;
 	if (typeof value === "boolean") return value;
-	warnings.push(`knowledge: ${key} must be a boolean; using ${fallback}`);
+	warnings.push(`${key} must be a boolean; using ${fallback}`);
 	return fallback;
 }
 
 function positiveIntOr(value: unknown, key: string, fallback: number, warnings: string[]): number {
 	if (value === undefined) return fallback;
 	if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.floor(value);
-	warnings.push(`knowledge: ${key} must be a positive number; using ${fallback}`);
+	warnings.push(`${key} must be a positive number; using ${fallback}`);
 	return fallback;
 }
 
 function stringOr(value: unknown, key: string, fallback: string, warnings: string[]): string {
 	if (value === undefined) return fallback;
 	if (typeof value === "string") return value;
-	warnings.push(`knowledge: ${key} must be a string; using ${fallback}`);
+	warnings.push(`${key} must be a string; using ${fallback}`);
 	return fallback;
 }
 
@@ -176,34 +176,34 @@ function enumOr<T extends string>(
 ): T {
 	if (value === undefined) return fallback;
 	if (typeof value === "string" && (allowed as readonly string[]).includes(value)) return value as T;
-	warnings.push(`knowledge: ${key} must be one of ${allowed.join(", ")}; using ${fallback}`);
+	warnings.push(`${key} must be one of ${allowed.join(", ")}; using ${fallback}`);
 	return fallback;
 }
 
 function stringArrayOr(value: unknown, key: string, fallback: string[], warnings: string[]): string[] {
 	if (value === undefined) return fallback;
 	if (Array.isArray(value) && value.every((item) => typeof item === "string")) return value as string[];
-	warnings.push(`knowledge: ${key} must be an array of strings; using the default`);
+	warnings.push(`${key} must be an array of strings; using the default`);
 	return fallback;
 }
 
 function objectOr(value: unknown, key: string, warnings: string[]): Record<string, unknown> {
 	if (value === undefined) return {};
 	if (isObject(value)) return value;
-	warnings.push(`knowledge: ${key} must be an object; using defaults`);
+	warnings.push(`${key} must be an object; using defaults`);
 	return {};
 }
 
 function rootsOr(value: unknown, warnings: string[]): RootConfig[] {
 	if (value === undefined) return DEFAULT_CONFIG.roots;
 	if (!Array.isArray(value)) {
-		warnings.push("knowledge: roots must be an array; using the default root");
+		warnings.push("roots must be an array; using the default root");
 		return DEFAULT_CONFIG.roots;
 	}
 	const roots: RootConfig[] = [];
 	for (const item of value) {
 		if (!isObject(item) || typeof item["path"] !== "string" || item["path"].trim() === "") {
-			warnings.push("knowledge: each root needs a path; skipping one");
+			warnings.push("each root needs a path; skipping one");
 			continue;
 		}
 		roots.push({
@@ -284,9 +284,7 @@ export function resolveConfig(raws: Record<string, unknown>[], warnings: string[
 function fractionOr(value: unknown, warnings: string[]): number {
 	if (value === undefined) return DEFAULT_CONFIG.injection.contextFraction;
 	if (typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 1) return value;
-	warnings.push(
-		`knowledge: injection.contextFraction must be in (0, 1]; using ${DEFAULT_CONFIG.injection.contextFraction}`,
-	);
+	warnings.push(`injection.contextFraction must be in (0, 1]; using ${DEFAULT_CONFIG.injection.contextFraction}`);
 	return DEFAULT_CONFIG.injection.contextFraction;
 }
 

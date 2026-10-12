@@ -14,7 +14,7 @@
 |---|---|
 | 既存知識の存在に気付ける | セッション開始時に予算内の索引が注入される |
 | 必要な知識を適用できる | 索引または `kb_search` の結果から `read` で本文に到達し、結論・条件・根拠を取得できる |
-| 知識を蓄積できる | `write` / `edit` が検証され、Git 管理のエントリとして次のセッションの索引に反映される |
+| 知識を蓄積できる | `write` / `edit` の結果が検証され、Git 管理のエントリとして次のセッションの索引に反映される |
 | 知識の劣化を検知できる | `kb lint` が参照切れ・陳腐化を検知し、CI で失敗する |
 | コンテキスト予算を守れる | 固定費と索引のトークンが上限内に収まる(§10) |
 | 外部依存なしで動ける | lexical のみで起動・検索できる |
@@ -36,8 +36,8 @@
 - 会話のエピソード記憶。
 - bi-temporal な時点質問(「その時点で何が可信だったか」)への回答。
 - 参照グラフによる multi-hop 検索。`[[id]]` と `supersedes` は参照解決と人間向け表示のためのものとする。
-- reranker による検索品質の上AIN。
-- 実行ログからの自動 Reflector。キャプチャは明示的な `/kb capture` のみで行う(§13)。
+- reranker による検索品質の向上。
+- 実行ログからの自動 Reflector。
 - 会話内容の自動キャプチャ。キャプチャは明示的な `/kb capture` のみで実行する。
 - チーム共有 root(`team` scope、§4.1、§5)への書き込み。team root は read-only。
 - document index(§12)のシステムプロンプト注入。
@@ -128,7 +128,7 @@ flowchart LR
 |---|---|
 | 知識は自己完結 | 1エントリ=1知識。結論・条件・根拠・不確実性を要約して持つ。原文の転載はしない |
 | 発見は索引、適用は本文 | 常時注入は1行の索引に限る。本文は必要時に読む |
-| 形式は所有者が定義し、誤りは事後に確定する | 形式は lint が定義・検証する。ID はモデルが命名する(§6.3)。書き込み前に内容flamを検証しない |
+| 形式は所有者が定義し、誤りは事後に確定する | 形式は lint が定義・検証する。ID はモデルが命名する(§6.3)。書き込み前に内容を検証しない |
 | 編集能力を維持する | モデルには `write` / `edit` を使わせ、hook は内容を失う操作の拒否だけを行う |
 | 規定しきれない機能は入れない | 半端な機能は矛盾を生む。全契約を書ける機能だけを採用する |
 | 計測して選ぶ | 検索方式と予算は bench で決める(§9、§17) |
@@ -149,9 +149,9 @@ flowchart LR
 | search index | catalog と本文から作る検索用データ(§8) |
 | injected index | セッション開始時と compaction 成功後に生成する索引テキスト(§8、§10) |
 | document index | `kb docs` が生成する外部文書の索引(§12) |
-| source | エントリの出典。URL またはリポジトリ内パス |
+| source | エントリの出典。URL または絶対パス(§6.1) |
 | link | 本文中の `[[id]]` 参照。`supersedes` はライフサイクル専用 |
-| host | エージェントランタイム。Pi と opencode(§15) |
+| host | エージェントランタイム。Pi と OpenCode(§15) |
 | hook | host が発火するイベントに登録する処理(§7、§15.1) |
 | frontmatter | ファイル先頭の `---` で囲んだ YAML メタデータ |
 | atomic | 1エントリに独立した知識を1つだけ書くこと |
@@ -163,7 +163,7 @@ flowchart LR
 
 | 用語 | 定義 |
 |---|---|
-| file tools | host の読み取り・検索ツール(Pi の `read` / `grep` / `find` / `ls`、opencode の `read` / `grep` / `glob`) |
+| file tools | host の読み取り・検索ツール(Pi の `read` / `grep` / `find` / `ls`、OpenCode の `read` / `grep` / `glob`) |
 | structuredContent | Pi のツール結果の構造化フィールド。codemode 等が受け取る |
 | details | pi ツール結果の描画・状態復元用フィールド |
 | fallbackReason | 検索 backend を落とした理由の固定文字列(§9.1) |
@@ -173,12 +173,12 @@ flowchart LR
 | recall | 過去の会話文脈から関連知識を想起させること(§10.5) |
 | MRR | 平均逆順位。bench の指標(§9.4) |
 | mtime+size | ファイルの更新時刻とサイズ。キャッシュ鍵 |
-| custom message | Pi の会話に挿入するカスタム種別メッセージ。opencode では `session` hook で system へ追記する |
-| followUp | Pi の次ターン積み指定。opencode では `delivery` で表現する |
-| context hook | opencode のモデル呼び出し直前フック。system プロンプトを加工する(§15.1) |
+| custom message | Pi の会話に挿入するカスタム種別メッセージ。OpenCode では `session` hook で system へ追記する |
+| followUp | Pi の次ターン積み指定。OpenCode では `delivery` で表現する |
+| context hook | OpenCode のモデル呼び出し直前フック。system プロンプトを加工する(§15.1) |
 | agent turn | ユーザー入力から assistant 応答完了までの1往復 |
 | contextWindow | 現在モデルの文脈窓サイズ |
-| trust | Pi がプロジェクト設定の読み込みを許可する状態。opencode では常に許可する |
+| trust | Pi がプロジェクト設定の読み込みを許可する状態。OpenCode では常に許可する |
 | type stripping | Node が型注釈を除いて TS を直接実行する機能 |
 | erasableSyntaxOnly | 型注釈のみ許可し実行時構文を禁止する TS 設定 |
 | whitelist | 配布物に含めるファイルの列挙 |
@@ -201,11 +201,11 @@ flowchart LR
 | `path` | string | 必須 | cwd 基準の相対パスまたは `~` 展開。ディレクトリでなければ警告して無効化 |
 | `scope` | string | `"project"` | `project` / `user` / `team`。他は設定警告 |
 | `priority` | integer | 100 | 1以上。同順位は記載順 |
-| `readonly` | boolean | false | true なら書き込みを常にブロック |
+| `readonly` | boolean | false | true ならファイルツールからの書き込みを拒否する |
 
 ### 5.2 解決規則
 
-- cwd は host の作業ディレクトリ。Pi はセッションごと、opencode は location ごとの値を host が渡す(§15.2)。相対パスは cwd 基準で解決する。
+- cwd は host の作業ディレクトリ。Pi はセッションごと、OpenCode は location ごとの値を host が渡す(§15.2)。相対パスは cwd 基準で解決する。
 - `roots` 未設定かつ `knowledge/` があれば project root 1つ。user root は明示設定時のみ。
 - 解決後パスが同一または包含関係にある root は設定警告とし、包含される側を無効化する。symlink は解決後パスで判定する。
 - 存在しない root は警告して無効化する。全 root が無効なら知識機能は no-op になる。
@@ -217,8 +217,7 @@ flowchart LR
 
 - 同一 id が複数 root にある場合、優先度の高い root を採用する。
 - 表示は常に `scope:id`(例 `user:a1b2c3d4`)とし、読み出し先は §5.4 の規則で解決する。
-- lint はエラーにする。shadow される id への書き込みは拒否する(§7.1)。
-- 衝突 id への拒否だけを Braunschweigさせ、無関係 id には影響しない。
+- lint はエラーにする。shadow への書き込みは拒否せず、用户在参照するか判断する。
 
 ### 5.4 読み出し先の解決
 
@@ -290,7 +289,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | 形式 | `^[a-z0-9]+(_[a-z0-9]+)*$`、40文字以内 |
 | 目安 | 結論を表す最大5語の英単語を `_` で連結する。強制しない |
 | 既存 | `[0-9a-f]{8}` はこのパターンに内包される。移行は不要で、旧形式のエントリはそのまま有効 |
-| 不一致 | entry にせず、`kb lint` が error で報告する |
+| 不一致 | invalid として扱い、`kb lint` が error で報告する |
 | 生成 | なし。モデルが `write` のパスとして書く |
 | 不変性 | 通常運用でリネーム禁止。`edit` ではリネームしない。同一パスの merge 衝突は Git の conflict として解決する(§19) |
 | 別名ファイル | 別名で書くと新エントリになる。旧 ID への `[[id]]` 参照は参照切れとして lint が報告する |
@@ -309,7 +308,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | `write` | パスが root 配下の既存ファイルか | 既存なら拒否する(§7.1)。新規作成は許可し、パスは書き換えない |
 | `edit` | なし | 介入しない |
 | `patch` | なし | 介入しない。`*** Update File` で既存エントリを更新できる既知の gap |
-| 全ツールの実行後 | 書き込み・変更されたエントリを読み直す | lint の error/warning をツール結果に添える(§7.2) |
+| `write` / `edit` の実行後 | 書き込み・変更されたエントリを読み直す | lint の error/warning をツール結果に添える(§7.2) |
 | セッション開始 | 全エントリ | 警告を集約通知する |
 | CI | `kb lint` | エラーありで終了コード1 |
 
@@ -323,7 +322,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 - 判定はパスの存在確認のみである。内容の検証は行わない。
 - 拒否は host のファイルツールに対して効く。shell 経由の書き込みは捕捉しない(§15.2 の gap)。
 - `write.enforce: "warn"` は既存パスへの `write` のみ許可に緩め、ツール結果に注記を添える。readonly は緩めない。
-- 手段は host ごとに異なる。Pi は `tool_call` の block、opencode は `tool.execute.before` の throw と `permission` hook の deny(§15.2)。
+- 手段は host ごとに異なる。Pi は `tool_call` の block、OpenCode は `tool.execute.before` の throw と `permission` hook の deny(§15.2)。
 - 検証対象: 設定 root 直下の `.md` のみ。root 外・サブディレクトリ・他拡張子には干渉しない。
 - hook の異常: tool schema 不一致・`input` 欠落・root 解決不能・hook 例外のときは介入せず、host の既存動作に任せる(ファイルは壊さない)。
 - 並行性: ファイル書き込みは host の write/edit ツールに任せる。プラグインは判断するだけでファイルを書かない。
@@ -339,9 +338,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 - `status` が許可値でない
 - `review_after` が `YYYY-MM-DD` でない
 - ファイル名が ID の規則(§6.3)に一致しない
-- ファイルが root のサブディレクトリにある(entry にしない)
 - 同一 ID が複数の root にある
-- root をまたぐ shadow への書き込み
 
 **warning(保存を許可して通知する)**
 
@@ -356,7 +353,8 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 - 未知の frontmatter フィールドがある
 - `supersedes` で指されたエントリが `active` のままである
 
-- error のエントリはファイルとして残るが catalog・検索・注入から除外する。除外されたエントリは `kb lint` の error として報告される。
+- error のエントリはファイルとして残るが catalog・検索・注入から除外し、`kb lint` の error として報告する。ID 規則に外れるファイルも error になる(knowledge root 直下は entry だけを置く)。
+- 警告文には接頭辞を付けない。`kb` は `kb: `、通知は `knowledge: ` を付ける。
 - `write.enforce` は §7.1 の拒否方針だけを制御する。内容の検証には使わない。
 
 ## 8. 読み出しと派生データ
@@ -368,7 +366,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | injected index | catalog から生成した索引 | セッション開始と compaction 成功後の直後。それ以外のセッション中は不変 |
 
 - セッション中の書き込みは catalog と search index に反映する。injected index はセッション開始と compaction の直後に再生成し、それ以外では更新しない。compaction は会話の作業記憶が要約される境界で、以後のターンでは索引が既存知識への唯一の常時発見面になるため、ここで実態へ同期する。毎変更で再生成するとプロンプトキャッシュの prefix を壊すため、境界を compaction に限る。
-- compaction 後の再生成は catalog の再走査と再レンダリングのみを行う。契機は Pi の `session_compact` と opencode の `session` hook `compaction`(§15.1)。設定・root・recall 状態は再読込しない。再走査で新たに生じた警告は通知する。
+- compaction 後の再生成は catalog の再走査と再レンダリングのみを行う。契機は Pi の `session_compact` と OpenCode の `session` hook `compaction`(§15.1)。設定・root・recall 状態は再読込しない。再走査で新たに生じた警告は通知する。
 - 再読込・再開・fork ではセッション開始から再構築する。
 
 ## 9. 検索
@@ -420,14 +418,14 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 - search index は初回検索時に遅延構築し、frontmatter と本文(1件64KBで打ち切り)を対象にする。本文にだけ一致するエントリも検索できる。
 - 更新は mtime+size をキーにした差分とし、変わったエントリだけ再構築する。
 - モデル向け `content` は最大3,000トークン。各行は tags と最大200字の本文抜粋を含む。超える場合は件数を減らし、その旨を明記する。
-- 完全データは Pi では structuredContent で返す(モデルのコンテキストには入らない)。opencode では `metadata` を使う。
+- 完全データは Pi では structuredContent で返す(モデルのコンテキストには入らない)。OpenCode のツール結果は本文だけを持つため、fallback は本文に明記する。
 
 ### 9.3 索引と result の上限
 
 | 対象 | 上限 | 超過時 |
 |---|---|---|
 | 1エントリの索引対象本文 | 64KB | 打ち切って索引し、結果に注記する |
-| structuredContent / metadata | なし(呼び出し元の責任) | - |
+| structuredContent | なし(呼び出し元の責任) | - |
 | モデル向け content | 3,000トークン | 件数を減らして注記する |
 | 表示件数 | 50件 | `limit` で制御 |
 
@@ -495,26 +493,24 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | title | `id title`(title 60字)。`when` は検索と本文で判断する |
 | pointer | 件数、タグ一覧、`kb_search` の案内のみ |
 
-- 索引はセッション開始と compaction 成功後に生成する。Pi は `before_agent_start` が毎回現在値を `systemPromptOptions.sections.knowledge_index` に再設定する。opencode は `context` hook が毎回 `system` へ追記する。
+- 索引はセッション開始と compaction 成功後に生成する。Pi は `before_agent_start` が毎回現在値を `systemPromptOptions.sections.knowledge_index` に再設定する。OpenCode は `context` hook が毎回 `system` へ追記する。
 - compaction の再生成は catalog の変化(セッション中の write / edit / shell / 外部変更)を反映する。設定・root の変更は次セッションから反映する。`injection.enabled: false` なら注入しない。
 - 実効予算は再生成時点のモデルの `contextWindow` から計算する。
 - Pi では再生成した索引を次に発生する `before_agent_start` で `knowledge_index` セクションに再設定する。`before_agent_start` は run 開始時にのみ発生するため、run 途中の auto-compaction ではその run が終わるまで旧索引のままとする。
 
 ### 10.5 recall ヒント
 
-`recall.mode: "hint"` はそのターンのユーザープロンプトを catalog と字句照合し、上位3件までの `id`(複数 root では `scope:id`)をそのターンのみに追加します。Pi は custom message(`customType: "knowledge_recall"`)、opencode は `system` への追記として表現します。同一セッションで hint 済みの id は再注入しません。永続化は保証せず、再開時は再度注入され得ます。上限3件で60トークン以内に収まります。
+`recall.mode: "hint"` はそのターンのユーザープロンプトを catalog と字句照合し、上位3件までの `id`(複数 root では `scope:id`)をそのターンのみに追加します。Pi は custom message(`customType: "knowledge_recall"`)、OpenCode は `system` への追記として表現します。同一セッションで hint 済みの id は再注入しません。永続化は保証せず、再開時は再度注入され得ます。上限3件で60トークン以内に収まります。
 
 ### 10.6 lint サマリ
 
-セッションごとに1回、lint の error / warning が1件以上あるときだけ、モデルへ送る。Pi は `session_start` で custom message、opencode はそのセッションの最初のモデル呼び出しで synthetic message として送る。上位8件と残件数、修正指示を含みます。モデルはユーザーの `/kb lint` 実行を待たずに修正へ着手できます。常時予算には含めません。
+セッションごとに1回、lint の error / warning が1件以上あるときだけ、モデルへ送る。Pi は `session_start` で custom message、OpenCode はそのセッションの最初のモデル呼び出しで synthetic message として送る。上位8件と残件数、修正指示を含みます。モデルはユーザーの `/kb lint` 実行を待たずに修正へ着手できます。常時予算には含めません。
 
 ## 11. 品質管理
 
 ### 11.1 lint
 
 §7.2 の検査を書き込み後の通知、`/kb lint`、CLI で共有する。CLI はエラーありで1、警告のみで0。
-
-- `source` がリポジトリ内相対パスのとき、自己仕様を転記している疑いとして warning を出す(§11.5)。絶対パスは存在確認だけを行う。
 
 ### 11.2 参照
 
@@ -525,7 +521,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 - `review_after` 超過をセッション開始時と `/kb stale` が報告する。
 - Git 最終更新日が `stale.days`(既定365)超のエントリも報告する。Git 不在・非リポジトリ・shallow clone は警告してスキップする。
 
-### 11.4 重複・陳腐化・低価値・衝突
+### 11.4 重複・陳腐化・未参照
 
 | 候補 | 選出 | 上限 |
 |---|---|---|
@@ -546,7 +542,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 |---|---|---|
 | 1 | 読み取り可能性 | コード・DESIGN.md・README から読み取れるなら書かない |
 | 2 | 変更耐性 | 設計を変えれば結論が壊れるなら書かない |
-| 3 | 再検証可能性 | 根拠(URL・実装パス・再現手順)へ指せないなら書かない |
+| 3 | 再検証可能性 | 根拠(URL・絶対パス・再現手順)へ指せないなら書かない |
 
 - テスト1と2の機械化できる部分は `source` で判定する。`source` がリポジトリ内相対パスなら warning とする(§11.1)。
 - 意味の適切さはモデルが判断する。`/kb review` では低価値・衝突の候補として扱う(§11.4)。
@@ -579,7 +575,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | `off` | 無効。`/kb capture` は無効と通知して何もしない |
 | `manual`(既定) | `/kb capture [focus]` が `pi.sendUserMessage()` で指示を送り、通常の agent turn を1回発生させる。入れ子モデル呼び出しはしない。ストリーミング中は `deliverAs: "followUp"`。送信失敗は通知して中断 |
 
-抽出の判断(何を知識にするか、原子性、重複確認、`source` の書き方)は同梱スキル `knowledge-curation` に置く。ファイル名はプラグインが付与するため任意でよい。自動キャプチャは設計対象外(§0.3)。
+抽出の判断(何を知識にするか、原子性、重複確認、`source` の書き方)は同梱スキル `knowledge-curation` に置く。ファイル名はモデルが命名する(§6.3)ため、命名規則に従う。自動キャプチャは設計対象外(§0.3)。
 
 ## 14. CLI と CI
 
@@ -594,7 +590,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | `kb stale` / `kb refs <id>` | 各一覧 | 0 |
 | `kb dups [--max <n>]` | 重複候補の一覧。`--max <n>` は候補ペアが n 超で終了コード1、n が0以上の整数でなければ2 | 既定は0 |
 | `kb docs [--check]` | document index の生成 / ドリフト検査 | check は差分ありで1。読み込み・書き込み失敗は2 |
-| `kb bench` | backend 別計測(JSON) | 0 |
+| `kb bench <fixture.json>` | backend 別計測(JSON)。引数なしは2 | 0 |
 | `kb search --backend <b> --require-backend` | backend 指定と厳格化 | backend 不可かつ require で3 |
 
 - 設定解決は host ごとだが、`kb` は両 host の project 設定を読む(§15.1)。project は trust 時のみ読む。
@@ -607,14 +603,14 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 
 ### 15.1 機能の写像
 
-| 機能 | Pi(`src/hosts/pi.ts`) | opencode(`src/hosts/opencode.ts`) |
+| 機能 | Pi(`src/hosts/pi.ts`) | OpenCode(`src/hosts/opencode.ts`) |
 |---|---|---|
 | catalog 構築 | `session_start` | プラグイン `setup`(location 単位) |
 | index 注入 | `before_agent_start` の `sections.knowledge_index` | `session` hook `context` で `system` に追記 |
 | compaction 後の再走査 | `session_compact` | `session` hook `compaction` |
 | recall ヒント | `before_agent_start` の返却 message | `context` hook で `system` に追記 |
 | 既存パスへの `write` 拒否 | `tool_call` の `block` | `tool` hook `execute.before` の throw |
-| readonly root の拒否 | `tool_call` の `block` | `permission` hook `evaluate` の `deny` |
+| readonly root の拒否 | `tool_call` の `block` | `write` は `execute.before` の throw、`edit` は `permission` hook の `deny` |
 | 書き込み後の lint 通知 | `tool_result` に追記 | `tool` hook `execute.after` で `result` を差し替え |
 | catalog の再走査 | `bash` の `tool_result` | `shell` の `execute.after` |
 | 検索ツール | `registerTool`(typebox) | `tool` transform(JSON Schema) |
@@ -624,19 +620,18 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | global 設定 | `$PI_CODING_AGENT_DIR/knowledge.json` | `$XDG_CONFIG_HOME/opencode/knowledge.json` |
 | 検索インデックス | `.pi/knowledge-*` | `.opencode/knowledge-*` |
 
-- パッケージは1つで、エントリポイントが2つある。Pi は `package.json` の `pi.extensions` を読み、opencode は `exports` の `./server` を読む。
-- `kb` CLI は host を選ぶため、両 host の project 設定を読む(`.pi` → `.opencode` の順で後勝ち)。CI の解決がどちらの host と一致するようにするためである。キャッシュだけ host ごとに分ける。
+- パッケージは1つで、エントリポイントが2つある。Pi は `package.json` の `pi.extensions` を読み、OpenCode は `exports` の `./server` を読む。
+- `kb` CLI は host を選ばない。global(Pi の agent dir → OpenCode の config dir)、project(`.pi` → `.opencode`)の順に4ファイルを読み、後勝ちに解決する。host ごとに global が違う場合はその和集合を使う。キャッシュだけ host ごとに分ける。
 
 ### 15.2 host 能力差
 
 | 差 | 内容 | 扱い |
 |---|---|---|
-| ユーザー向け通知 | opencode のサーバープラグインにトースト相当がない | opencode では通知しない。警告は会話とツール結果に出る |
-| セッション開始時 | opencode にセッション開始イベントがない | `setup` で構築し、lint サマリは各セッションの最初の `context` で1回送る |
-| ブロックのsaw | opencode では throw がツールエラーになる | メッセージに違反項目と修正条件を含める(内容は host 間で揃える) |
-| 編集ツールの入力 | Pi は `edits[]`、opencode は `oldString/newString` | §7 の決定により入力形状に依存しないため差がない |
+| ユーザー向け通知 | OpenCode のサーバープラグインにトースト相当がない | OpenCode では通知しない。警告は会話とツール結果に出る |
+| セッション開始時 | OpenCode にセッション開始イベントがない | `setup` で構築し、lint サマリは各セッションの最初の `context` で1回送る |
+| ブロックの見え方 | OpenCode では throw がツールエラーになる | メッセージに違反項目と修正条件を含める(内容は host 間で揃える) |
 | `patch` | 既存エントリを更新できる | 既知の gap。両 host 共通 |
-| cwd | Pi はセッションごと、opencode は location ごと | opencode では `ctx.location.directory` を使う。worktree 内セッションで root 解決が異なる場合は非目標 |
+| cwd | Pi はセッションごと、OpenCode は location ごと | OpenCode では `ctx.location.directory` を使う。worktree 内セッションで root 解決が異なる場合は非目標 |
 | shell 経由の書き込み | 両 host とも捕捉しない | 既知の gap。readonly root の保証はファイルツールに対してのみ成り立つ |
 | Pi の shell ツール名 | `bash` と `powershell` | 両方を再走査の契機にする |
 
@@ -688,8 +683,8 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 
 ## 18. セキュリティとプライバシー
 
-- Pi のプロジェクト設定は trust 時のみ読む。opencode では host が読み込むため常に読む。既定でネットワークを使わない。
-- opencode はリポジトリ内の `.opencode/opencode.json` から host を自動ロードできる。`knowledge/` の内容を書き換えるのは §7.1 の拒否だけなので、自動有効化されてもエントリは増えない。root の追加は設定ファイルで宣言する必要がある。
+- Pi のプロジェクト設定は trust 時のみ読む。OpenCode では host が読み込むため常に読む。既定でネットワークを使わない。
+- OpenCode はリポジトリ内の `.opencode/opencode.json` から host を自動ロードできる。`knowledge/` の内容を書き換えるのは §7.1 の拒否だけなので、自動有効化されてもエントリは増えない。root の追加は設定ファイルで宣言する必要がある。
 - embedding は明示設定時のみ。本文が外部送信されることを README に明記し、キーは環境変数名だけを書く。
 - ナレッジはリポジトリ内容と同等に信頼する。外部由来の文書をエントリ化する場合は `source` で出典を示す。
 
@@ -765,7 +760,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | 3 検証と拡張 (実装済み) | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
 | 4 共有 (実装済み) | readonly の共有 root(team)、索引の永続キャッシュ | 複数人運用で破綻しない |
 | 5 自律キュレーション (実装済み) | lint サマリのモデル通知、`/kb review`(重複・陳腐化・未参照候補の判定と統合・superseded の提案) | 提案が通常の write/edit 経路で適用できる |
-| 6 opencode 対応 (実装済み) | `src/core` と `src/hosts` の分離、opencode アダプタ、`kb` の設定解決の共通化、モデル命名 ID、事後検証への統一、採用規則(§11.5) | 両 host で同じ表面と同じ判定になり、ADR を満たす |
+| 6 OpenCode 対応 (実装済み) | `src/core` と `src/hosts` の分離、OpenCode アダプタ、`kb` の設定解決の共通化、モデル命名 ID、事後検証への統一、採用規則(§11.5) | 両 host で同じ表面と同じ判定になり、ADR を満たす |
 
 ## 22. 未決事項
 
