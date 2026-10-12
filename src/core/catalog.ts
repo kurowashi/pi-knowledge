@@ -17,7 +17,8 @@ import type { CatalogData, EntryRecord, InvalidEntry, ResolvedRoot, Status } fro
  *  naming rule changed stay valid without migration (DESIGN.md §6.3). */
 const ID_PATTERN = /^[a-z0-9]+(_[a-z0-9]+)*$/;
 const ID_MAX_LENGTH = 40;
-const ID_RULE = `${ID_PATTERN.source}, max ${ID_MAX_LENGTH} chars`;
+/** Human-readable rule for warnings. */
+export const ID_RULE = `${ID_PATTERN.source}, max ${ID_MAX_LENGTH} chars`;
 const STATUSES: readonly Status[] = ["active", "superseded", "deprecated"];
 const KNOWN_FIELDS = new Set(["title", "when", "tags", "status", "supersedes", "review_after", "source"]);
 

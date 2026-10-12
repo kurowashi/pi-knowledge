@@ -54,7 +54,7 @@ Host differences are documented in [DESIGN.md §15](DESIGN.md#15-統合面host):
 | Config | `.pi/knowledge.json` | `.opencode/knowledge.json` |
 | Search cache | `.pi/knowledge-*` | `.opencode/knowledge-*` |
 
-`kb` reads both project configs so CI resolves the same configuration the agent did.
+`kb` takes no host: it reads both global files and both project files (`.pi` then `.opencode`, later wins), so CI resolves a superset of what any single agent loaded.
 
 ## Entry format
 
@@ -128,7 +128,7 @@ Search backends are selectable (`search.backend` or `--backend`). An unavailable
 
 Global values load first; a trusted project then overrides them key by key. Broken config falls back to defaults with a warning and never blocks the session. See [DESIGN.md §16](DESIGN.md#16-設定スキーマ) for the full schema and defaults.
 
-Roots have a `scope`: `project` (default), `user`, or `team`. A team root is meant for a shared, read-only checkout (set `readonly: true`); writes to it are blocked in every enforcement mode.
+Roots have a `scope`: `project` (default), `user`, or `team`. A team root is meant for a shared, read-only checkout (set `readonly: true`); the file tools are refused on it in every enforcement mode. Shell commands are not intercepted.
 
 Search indexes persist under the host's directory (`.pi/knowledge-fts.sqlite`, `.pi/knowledge-embeddings.json`) and are reused while the corpus is unchanged. Add `.pi/knowledge-*` and `.opencode/knowledge-*` to your `.gitignore`; disable the cache with `"cache": { "enabled": false }`.
 

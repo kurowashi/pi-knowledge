@@ -9,7 +9,15 @@
  */
 
 import * as path from "node:path";
-import { buildCatalog, parseEntryFile, removeEntry, rescanCatalog, upsertEntry } from "./catalog.ts";
+import {
+	buildCatalog,
+	ID_RULE,
+	isValidEntryId,
+	parseEntryFile,
+	removeEntry,
+	rescanCatalog,
+	upsertEntry,
+} from "./catalog.ts";
 import { type HostPaths, type KnowledgeConfig, loadConfig } from "./config.ts";
 import { formatSearchHit, formatSearchHits } from "./format.ts";
 import { lintCatalog } from "./lint.ts";
@@ -129,9 +137,16 @@ export class Knowledge {
 		try {
 			this.reload();
 		} catch (error) {
+			// A half-loaded instance must enforce nothing: clear every field so
+			// `enabled` stays false and no stale root survives.
 			this.config = null;
 			this.catalog = null;
+			this.service = null;
+			this.roots = [];
+			this.rendered = null;
 			this.section = "";
+			this.warnings = [];
+			this.recalled.clear();
 			this.host.notify(`knowledge: failed to load: ${message(error)}`, "warning");
 		}
 	}
@@ -195,18 +210,21 @@ export class Knowledge {
 	/** Rescan after compaction so a continuation sees the current knowledge. */
 	onCompacted(): void {
 		if (this.catalog === null || this.config === null || !this.config.enabled) return;
-		const before = this.warnings.length;
+		const fresh: string[] = [];
+		this.warnings = [];
 		this.catalog = rescanCatalog(this.catalog, this.roots, this.warnings);
 		this.service = this.makeService();
 		this.refreshIndex();
-		this.announceWarnings(this.warnings.slice(before));
+		fresh.push(...this.warnings);
+		this.announceWarnings(fresh);
 	}
 
 	/** Top lint findings for the model, or null when the catalog is clean. */
 	lintMessage(): string | null {
 		if (this.catalog === null) return null;
 		const issues = lintCatalog(this.catalog, this.roots, new Date());
-		if (issueCounts(issues).errors + issueCounts(issues).warnings === 0) return null;
+		const counts = issueCounts(issues);
+		if (counts.errors + counts.warnings === 0) return null;
 		const shown = issues
 			.slice(0, LINT_MESSAGE_LIMIT)
 			.map((issue) => `- ${issue.level}: ${issue.path}: ${issue.message}`);
@@ -276,11 +294,10 @@ export class Knowledge {
 	}
 
 	/** Refresh the whole catalog after a shell command changed files. */
-	rescan(): string[] {
-		if (this.catalog === null) return [];
+	rescan(): void {
+		if (this.catalog === null) return;
 		this.catalog = rescanCatalog(this.catalog, this.roots, this.warnings);
 		this.service = this.makeService();
-		return [];
 	}
 
 	private refreshTarget(filePath: unknown): void {
@@ -288,12 +305,24 @@ export class Knowledge {
 		const target = findKnowledgeTarget(filePath, this.options.cwd, this.roots);
 		if (target === null || target.nested) return;
 		const abs = path.join(target.root.dir, `${target.id}.md`);
+		// A scan only accepts names that match the id rule (DESIGN.md §6.3), so a
+		// badly named file must leave the catalog here too. Otherwise the model
+		// searches an entry that the next scan silently drops.
+		if (!isValidEntryId(target.id)) {
+			this.catalog = removeEntry(this.catalog, abs, this.roots);
+			this.service = this.makeService();
+			this.host.notify(
+				`knowledge: ${path.basename(filePath)} does not match the entry id rule (${ID_RULE}); not an entry`,
+				"warning",
+			);
+			return;
+		}
 		const result = parseEntryFile(abs, target.root);
 		this.catalog = result.entry
 			? upsertEntry(this.catalog, result.entry, this.roots)
 			: removeEntry(this.catalog, abs, this.roots);
 		if (result.invalid !== null) this.host.notify(`knowledge: entry not usable: ${result.invalid}`, "warning");
-		if (result.entry !== null) this.service = this.makeService();
+		this.service = this.makeService();
 	}
 
 	/** Lint notes for the entry a tool just wrote or edited. */

@@ -25,7 +25,7 @@ interface DeclaredTool {
 /** Load the OpenCode adapter and capture the tool declaration it registers. */
 async function opencodeSearchDeclaration(): Promise<string> {
 	let declared: DeclaredTool | null = null;
-	const context = {
+	const context: unknown = {
 		location: { directory: mkdtempSync(join(tmpdir(), "pi-knowledge-budget-oc-")) },
 		session: { hook: async () => ({}), prompt: async () => {}, synthetic: async () => {} },
 		tool: {
@@ -42,7 +42,7 @@ async function opencodeSearchDeclaration(): Promise<string> {
 		permission: { hook: async () => ({ dispose: () => {} }) },
 		command: { transform: async () => ({ dispose: () => {} }) },
 	};
-	await opencodePlugin.setup(context as never);
+	await opencodePlugin.setup(context as Parameters<typeof opencodePlugin.setup>[0]);
 	assert.ok(declared, "kb_search must be registered for OpenCode");
 	const { name, description, input } = declared as DeclaredTool;
 	return JSON.stringify({ name, description, input });

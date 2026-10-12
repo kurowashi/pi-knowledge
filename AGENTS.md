@@ -37,10 +37,13 @@
 | ID はモデルが命名し、`^[a-z0-9]+(_[a-z0-9]+)*$`・40文字以内。`[0-9a-f]{8}` は受理する | `test/unit/lint.test.ts` | `src/core/catalog.ts` |
 | プラグインはパスを書き換えない。ID を生成しない | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
 | 既存エントリパスへの `write` は拒否する。更新は `edit` のみ | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
-| readonly root への書き込みは `write.enforce: "warn"` でも拒否する | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
+| readonly root へのファイルツールの書き込みは `write.enforce: "warn"` でも拒否する。shell 経由は既知の gap | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
 | root 外と `.md` 以外には干渉しない | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
 | 書き込み前の内容検証をしない。`edit` と `patch` には介入しない | `test/integration/extension.test.ts` | `src/core/engine.ts` |
 | 書き込み後に lint の error/warning をツール結果に添える | `test/integration/extension.test.ts` | `src/core/engine.ts` |
+| ID 規則に合わないファイルは書き込み直後に catalog から外し、警告する | `test/integration/opencode.test.ts` | `src/core/engine.ts` |
+| catalog が変わったら検索サービスを必ず作り直す | `test/integration/opencode.test.ts` | `src/core/engine.ts` |
+| opencode の hook は Pi と同じ判定を行う(index 注入・拒否・通知・コマンド) | `test/integration/opencode.test.ts` | `src/hosts/opencode.ts` |
 | 注入はセッション開始と compaction 後に再生成し、それ以外のセッション中は更新しない | `test/integration/extension.test.ts` | `src/core/engine.ts` |
 | 注入は実効予算内に縮退する。固定費が上回る場合はヘッダのみを注入し `overBudget` を表示する | `test/unit/render.test.ts` | `src/core/render.ts` |
 | 固定文・ツール宣言・スキルはトークン予算内 | `test/contract/budget.test.ts` | `src/core/render.ts` |
@@ -56,6 +59,7 @@
 | ID の重複(root をまたぐ shadow)は lint error にする | `test/unit/lint.test.ts` | `src/core/lint.ts` |
 | `/kb review` は候補をモデルへ渡す(プラグイン自身は書き込まない) | `test/integration/extension.test.ts` | `src/core/review.ts`、`src/core/engine.ts` |
 | `/kb review` の候補は重複・陳腐化・未参照を出し、ID だけを単独で表示しない | `test/integration/extension.test.ts` + `test/unit/similar.test.ts` | `src/core/review.ts`、`src/core/similar.ts` |
+| 候補は上限を超える件数を必ず開示し、`scope:id` 参照は自スコープにだけ効く | `test/unit/review.test.ts` | `src/core/review.ts` |
 | `kb dups --max N` は候補ペアが N 超で終了コード1 | `test/unit/cli.test.ts` | `src/cli.ts` |
 | 検索結果の content は tags を含む | `test/integration/extension.test.ts` | `src/core/format.ts` |
 | 利用不可の backend は lexical へフォールバックし、理由を必ず表示する | `test/unit/search_service.test.ts` | `src/core/search_service.ts` |
@@ -69,7 +73,7 @@
 | 設定はグローバル→プロジェクトの順にマージし、project が優先 | `test/unit/config.test.ts` | `src/core/config.ts` |
 | 未信頼プロジェクトの設定は無視する | `test/unit/config.test.ts` | `src/core/config.ts` |
 | 壊れた設定は警告して既定値で動き、セッションを止めない | `test/unit/config.test.ts` | `src/core/config.ts` |
-| `kb` は両 host の project 設定を読み、agent と CI が同じ解決になる | `test/unit/config.test.ts` | `src/core/config.ts` |
+| `kb` は host を選ばず、両 host の global と project 設定を解決する | `test/unit/config.test.ts` | `src/core/config.ts` |
 | キャッシュディレクトリだけ host ごとに違う | `test/unit/config.test.ts` | `src/core/config.ts` |
 | 同一 scope の root は優先度の高い1つだけ有効。有効 root は最大3 | `test/unit/roots.test.ts` | `src/core/roots.ts` |
 | `floorTokens` > `maxTokens` は `maxTokens` に補正する | `test/unit/config.test.ts` | `src/core/config.ts` |

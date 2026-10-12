@@ -36,9 +36,14 @@ test("no build step and the entry points exist", () => {
 test("Pi and OpenCode load the same package through different entry points", () => {
 	const pkg = packageJson();
 	const exports = pkg["exports"] as Exports;
-	assert.equal(exports["./server"], "./src/hosts/opencode.ts", "OpenCode resolves <package>/server");
-	for (const entry of Object.values(exports)) {
+	const pi = pkg["pi"] as { extensions: string[] };
+	// OpenCode resolves `<package>/server` first (Host.resolve), Pi reads `pi.extensions`.
+	assert.deepEqual(Object.keys(exports), ["./server"]);
+	assert.equal(exports["./server"], "./src/hosts/opencode.ts");
+	assert.equal(pi.extensions.length, 1);
+	for (const entry of [...Object.values(exports), ...pi.extensions]) {
 		assert.ok(fs.existsSync(path.join(PACKAGE_ROOT, entry)), `${entry} must exist`);
+		assert.ok(!entry.endsWith("/"), `${entry} must be a file, not a directory`);
 	}
 });
 

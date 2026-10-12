@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -54,6 +54,11 @@ interface StubHost {
 	hooks: string[];
 }
 
+/** Remove the scratch directories a test created. */
+function cleanup(...dirs: string[]): void {
+	for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+}
+
 async function loadOpencodePlugin(cwd: string): Promise<StubHost> {
 	const tools = new Map<string, { name: string; description: string }>();
 	const commands = new Map<string, { name: string }>();
@@ -91,19 +96,27 @@ async function loadOpencodePlugin(cwd: string): Promise<StubHost> {
 
 test("the OpenCode host exposes the same one tool and one command", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-knowledge-opencode-"));
-	const host = await loadOpencodePlugin(cwd);
-	assert.deepEqual([...host.tools.keys()], ["kb_search"]);
-	assert.deepEqual([...host.commands.keys()], ["kb"]);
+	try {
+		const host = await loadOpencodePlugin(cwd);
+		assert.deepEqual([...host.tools.keys()], ["kb_search"]);
+		assert.deepEqual([...host.commands.keys()], ["kb"]);
+	} finally {
+		cleanup(cwd);
+	}
 });
 
 test("the OpenCode host subscribes to exactly the documented hooks", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-knowledge-opencode-"));
-	const host = await loadOpencodePlugin(cwd);
-	assert.deepEqual(host.hooks.sort(), [
-		"permission:evaluate",
-		"session:compaction",
-		"session:context",
-		"tool:execute.after",
-		"tool:execute.before",
-	]);
+	try {
+		const host = await loadOpencodePlugin(cwd);
+		assert.deepEqual(host.hooks.sort(), [
+			"permission:evaluate",
+			"session:compaction",
+			"session:context",
+			"tool:execute.after",
+			"tool:execute.before",
+		]);
+	} finally {
+		cleanup(cwd);
+	}
 });

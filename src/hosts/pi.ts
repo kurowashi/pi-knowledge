@@ -21,6 +21,18 @@ import { Type } from "typebox";
 import { PI_HOST_PATHS } from "../core/config.ts";
 import { Knowledge } from "../core/engine.ts";
 
+/** Tools whose completion means files under the knowledge roots may have changed. */
+const SHELL_TOOLS = new Set(["bash", "powershell"]);
+
+/** Lint notes after a successful write/edit, or a rescan after a shell command. */
+function notesAfter(knowledge: Knowledge, toolName: string, input: unknown): string[] {
+	if (toolName === "write" || toolName === "edit") {
+		return knowledge.afterWrite((input as Record<string, unknown> | undefined)?.["path"]);
+	}
+	if (SHELL_TOOLS.has(toolName)) knowledge.rescan();
+	return [];
+}
+
 export default function knowledgeExtension(pi: ExtensionAPI): void {
 	let knowledge: Knowledge | null = null;
 	const notesByCall = new Map<string, string[]>();
@@ -71,13 +83,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		if (knowledge?.enabled !== true) return;
 		const notes = notesByCall.get(event.toolCallId) ?? [];
 		notesByCall.delete(event.toolCallId);
-		const input = event.input as Record<string, unknown>;
-		const fresh =
-			event.toolName === "write" || event.toolName === "edit"
-				? knowledge.afterWrite(input["path"])
-				: event.toolName === "bash"
-					? knowledge.rescan()
-					: [];
+		const fresh = event.isError === true ? [] : notesAfter(knowledge, event.toolName, event.input);
 		const all = [...notes, ...fresh];
 		if (all.length === 0) return;
 		return { content: [...event.content, { type: "text" as const, text: `kb: ${all.join("; ")}` }] };

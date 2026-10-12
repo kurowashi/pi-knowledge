@@ -321,6 +321,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | readonly root への書き込み | root の契約違反。`write.enforce` に関わらず拒否する |
 
 - 判定はパスの存在確認のみである。内容の検証は行わない。
+- 拒否は host のファイルツールに対して効く。shell 経由の書き込みは捕捉しない(§15.2 の gap)。
 - `write.enforce: "warn"` は既存パスへの `write` のみ許可に緩め、ツール結果に注記を添える。readonly は緩めない。
 - 手段は host ごとに異なる。Pi は `tool_call` の block、opencode は `tool.execute.before` の throw と `permission` hook の deny(§15.2)。
 - 検証対象: 設定 root 直下の `.md` のみ。root 外・サブディレクトリ・他拡張子には干渉しない。
@@ -636,6 +637,8 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | 編集ツールの入力 | Pi は `edits[]`、opencode は `oldString/newString` | §7 の決定により入力形状に依存しないため差がない |
 | `patch` | 既存エントリを更新できる | 既知の gap。両 host 共通 |
 | cwd | Pi はセッションごと、opencode は location ごと | opencode では `ctx.location.directory` を使う。worktree 内セッションで root 解決が異なる場合は非目標 |
+| shell 経由の書き込み | 両 host とも捕捉しない | 既知の gap。readonly root の保証はファイルツールに対してのみ成り立つ |
+| Pi の shell ツール名 | `bash` と `powershell` | 両方を再走査の契機にする |
 
 ### 15.3 共通面
 

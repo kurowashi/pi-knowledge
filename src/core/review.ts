@@ -8,6 +8,7 @@
  */
 
 import type { KnowledgeConfig } from "./config.ts";
+import { extractLinks } from "./lint.ts";
 import { type DuplicatePair, findDuplicatePairs } from "./similar.ts";
 import { type StaleReport, staleReport } from "./stale.ts";
 import type { CatalogData, EntryRecord, ResolvedRoot } from "./types.ts";
@@ -25,13 +26,20 @@ function describe(entry: EntryRecord, multiRoot: boolean): string {
 	return `${label(entry, multiRoot)} ${entry.title}`;
 }
 
-function duplicateLines(pairs: DuplicatePair[], multiRoot: boolean): string[] {
+/** Every candidate kind discloses its truncation; the model must know the total. */
+function hiddenLine(shown: number, total: number, noun: string): string[] {
+	return total > shown ? [`- (+${total - shown} more ${noun} not shown)`] : [];
+}
+
+function duplicateLines(pairs: DuplicatePair[], multiRoot: boolean, total: number): string[] {
 	if (pairs.length === 0) return [];
-	const lines = [`Duplicate candidates (similarity >= 0.6, ${pairs.length} shown):`];
-	for (const pair of pairs) {
-		lines.push(`- ${describe(pair.a, multiRoot)} / ${describe(pair.b, multiRoot)} / ${pair.score.toFixed(2)}`);
-	}
-	return lines;
+	return [
+		`Duplicate candidates (similarity >= 0.6):`,
+		...pairs.map(
+			(pair) => `- ${describe(pair.a, multiRoot)} / ${describe(pair.b, multiRoot)} / ${pair.score.toFixed(2)}`,
+		),
+		...hiddenLine(pairs.length, total, "pairs"),
+	];
 }
 
 function staleLines(report: StaleReport, multiRoot: boolean): string[] {
@@ -41,33 +49,44 @@ function staleLines(report: StaleReport, multiRoot: boolean): string[] {
 	for (const item of shown) {
 		lines.push(`- ${describe(item.entry, multiRoot)} / ${item.reason}: ${item.detail}`);
 	}
-	if (report.entries.length > shown.length) {
-		lines.push(`- (+${report.entries.length - shown.length} more stale entries not shown)`);
-	}
-	return lines;
+	return [...lines, ...hiddenLine(shown.length, report.entries.length, "stale entries")];
 }
 
+/**
+ * Entries nothing points at. A `scope:id` reference only counts for that scope;
+ * a bare `[[id]]` matches the id in every scope, so it is checked per scope.
+ */
 function unlinkedEntries(catalog: CatalogData): EntryRecord[] {
-	const referenced = new Set<string>();
+	const scoped = new Set<string>();
+	const bare = new Set<string>();
 	for (const entry of catalog.entries) {
-		for (const match of entry.body.matchAll(/\[\[([^\]\s]+)\]\]/g)) {
-			const target = match[1];
-			if (target !== undefined) referenced.add(target);
+		for (const link of extractLinks(entry.body)) {
+			const colon = link.indexOf(":");
+			if (colon === -1) bare.add(link);
+			else scoped.add(link);
 		}
 		if (entry.supersedes !== null) {
 			const colon = entry.supersedes.indexOf(":");
-			referenced.add(colon === -1 ? entry.supersedes : entry.supersedes.slice(colon + 1));
+			if (colon === -1) bare.add(entry.supersedes);
+			else scoped.add(entry.supersedes);
 		}
 	}
-	return catalog.entries.filter((entry) => entry.status === "active" && !referenced.has(entry.id));
+	return catalog.entries.filter((entry) => {
+		if (entry.status !== "active") return false;
+		if (bare.has(entry.id)) return false;
+		return !scoped.has(`${entry.scope}:${entry.id}`) && !scoped.has(entry.id);
+	});
 }
 
 function unlinkedLines(catalog: CatalogData, multiRoot: boolean): string[] {
-	const shown = unlinkedEntries(catalog).slice(0, UNLINKED_LIMIT);
+	const entries = unlinkedEntries(catalog);
+	const shown = entries.slice(0, UNLINKED_LIMIT);
 	if (shown.length === 0) return [];
-	const lines = ["Unlinked candidates (no [[id]] or supersedes points at them):"];
-	for (const entry of shown) lines.push(`- ${describe(entry, multiRoot)}`);
-	return lines;
+	return [
+		"Unlinked candidates (no [[id]] or supersedes points at them):",
+		...shown.map((entry) => `- ${describe(entry, multiRoot)}`),
+		...hiddenLine(shown.length, entries.length, "unlinked entries"),
+	];
 }
 
 export function reviewCandidates(
@@ -78,8 +97,9 @@ export function reviewCandidates(
 	now: Date,
 ): string[] {
 	const multiRoot = roots.length > 1;
+	const pairs = findDuplicatePairs(catalog);
 	return [
-		...duplicateLines(findDuplicatePairs(catalog).slice(0, DUP_LIMIT), multiRoot),
+		...duplicateLines(pairs.slice(0, DUP_LIMIT), multiRoot, pairs.length),
 		...staleLines(staleReport(catalog, config, cwd, now), multiRoot),
 		...unlinkedLines(catalog, multiRoot),
 	];

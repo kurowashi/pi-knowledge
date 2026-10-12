@@ -32,8 +32,7 @@ function lastUserText(messages: SessionContext["messages"]): string {
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index];
 		if (message === undefined || message.role !== "user") continue;
-		const parts = "parts" in message && Array.isArray(message.parts) ? message.parts : [];
-		const texts = parts.flatMap((part) => (part.type === "text" ? [part.text] : []));
+		const texts = message.content.flatMap((part) => (part.type === "text" ? [part.text] : []));
 		if (texts.length > 0) return texts.join("\n");
 	}
 	return "";
@@ -67,17 +66,29 @@ const SEARCH_DESCRIPTION =
 const pathOf = (input: unknown): unknown =>
 	typeof input === "object" && input !== null ? (input as { path?: unknown }).path : undefined;
 
-const FILE_TOOLS = new Set(["write", "edit", "patch"]);
+const FILE_TOOLS = new Set(["write", "edit"]);
 const SHELL_TOOLS = new Set(["shell", "bash"]);
 
 /**
- * Lint notes after a tool ran. OpenCode's `patch` carries many paths, so only
- * its first `path` is re-read; `kb lint` reports the rest (DESIGN.md §7.2).
+ * Lint notes after a tool ran. `patch` is absent on purpose: its input is a
+ * single patch text with no path to re-read, so the entry it created is picked
+ * up by the next scan instead (DESIGN.md §7).
  */
 function postWriteNotes(knowledge: Knowledge, tool: string, filePath: unknown): string[] {
 	if (FILE_TOOLS.has(tool)) return knowledge.afterWrite(filePath);
-	if (SHELL_TOOLS.has(tool)) return knowledge.rescan();
+	if (SHELL_TOOLS.has(tool)) knowledge.rescan();
 	return [];
+}
+
+/** One lint message per session, but never an unbounded set of session ids. */
+const ANNOUNCED_LIMIT = 500;
+
+function forgetOldest(set: Set<string>, limit: number): void {
+	while (set.size > limit) {
+		const oldest = set.values().next();
+		if (oldest.done === true) return;
+		set.delete(oldest.value);
+	}
 }
 
 /**
@@ -98,7 +109,7 @@ const plugin: Plugin = {
 
 		const announced = new Set<string>();
 
-		await ctx.session.hook("context", (event) => {
+		await ctx.session.hook("context", async (event) => {
 			if (knowledge.indexSection) event.system.push({ type: "text", text: knowledge.indexSection });
 			const recall = knowledge.recall(lastUserText(event.messages));
 			if (recall !== null) event.system.push({ type: "text", text: recall.text });
@@ -106,7 +117,9 @@ const plugin: Plugin = {
 			const lint = knowledge.lintMessage();
 			if (lint === null) return;
 			announced.add(event.sessionID);
-			void ctx.session.synthetic({ sessionID: event.sessionID, text: lint });
+			forgetOldest(announced, ANNOUNCED_LIMIT);
+			// A closed session rejects this; the context hook must not fail with it.
+			await ctx.session.synthetic({ sessionID: event.sessionID, text: lint }).catch(() => {});
 		});
 
 		await ctx.session.hook("compaction", () => {
@@ -114,7 +127,7 @@ const plugin: Plugin = {
 		});
 
 		await ctx.permission.hook("evaluate", (event) => {
-			if (event.effect === "deny" || event.action !== "edit") return;
+			if (knowledge.enabled !== true || event.effect === "deny" || event.action !== "edit") return;
 			const blocked = event.resources.find((resource) => knowledge.isReadonlyPath(resource));
 			if (blocked === undefined) return;
 			event.effect = "deny";
