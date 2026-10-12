@@ -394,7 +394,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | embedding | 設定エンドポイントのコサイン類似。キーは環境変数名のみ | 初回検索時に遅延確認 |
 | hybrid | lexical と embedding の RRF(順位融合) | 両方利用可能なときのみ |
 
-- フォールバック先は常に lexical。失敗時は `backend` に実使用値、`fallback: true`、`fallbackReason` を details / stderr / JSON に出す。黙って切り替えない。
+- フォールバック先は常に lexical。失敗時は `backend` に実使用値、`fallback: true`、`fallbackReason` を出す。面は Pi が details、CLI が stderr と JSON、OpenCode がツール結果の本文(§15.2)。黙って切り替えない。
 - `fallbackReason` は `unavailable`(未設定・接続不可) / `auth`(401/403) / `network`(DNS・TLS・timeout) / `rate_limited`(429) / `server`(5xx) / `protocol`(不正応答・次元不一致) のいずれか。
 - FTS5 は検出失敗・初期化失敗・クエリ失敗のいずれでも lexical へ落とす。
 - ツールはフォールバックを許可する。厳格指定は CLI の `--require-backend` に限る。
@@ -593,7 +593,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | `kb bench <fixture.json>` | backend 別計測(JSON)。引数なしは2 | 0 |
 | `kb search --backend <b> --require-backend` | backend 指定と厳格化 | backend 不可かつ require で3 |
 
-- 設定解決は host ごとだが、`kb` は両 host の project 設定を読む(§15.1)。project は trust 時のみ読む。
+- 設定解決は host ごとだが、`kb` は global 2ファイルと project 2ファイルを順に読む(§15.1)。project は trust 時のみ読む。
 - CI の最小構成は `kb lint` と `kb docs --check`。警告のみでは止めない。任意で `kb dups --max <n>` を追加できる。
 - `/kb status` は host コマンド(実装済み)。CLI の `kb status` は提供しない。
 
@@ -744,7 +744,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | FR6 | §13 | off / manual の各動作。manual が通常 turn を1回発生させ、送信失敗で中断する |
 | FR7 | §11 | 参照切れ、stale(Git 失敗含む)、dups、`kb refs`、review の未参照候補 |
 | FR8 | §12 | 生成、`--check`、0件、上限打ち切り、バイナリ除外、書き込み失敗 |
-| FR9 | §14 | CLI が両 host の project 設定を解決し、終了コードが規定どおり |
+| FR9 | §14 | CLI が global 2ファイルと project 2ファイルを解決し、終了コードが規定どおり |
 | NFR1 | §10 | 常時固定費 ≤960(実測852)、行コスト典型/最悪、pointer クランプと overBudget、lint サマリ、検索 content ≤3,000 |
 | NFR2 | §2.3、§9、§18 | runtime import が Node 組み込みのみ。lexical がネットワークなしで動く。FTS5 不可でも動く。embedding 未設定で送信がない |
 | NFR3 | §17 | 全性能行の計測 |

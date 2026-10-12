@@ -74,7 +74,7 @@ function unlinkedEntries(catalog: CatalogData): EntryRecord[] {
 	return catalog.entries.filter((entry) => {
 		if (entry.status !== "active") return false;
 		if (bare.has(entry.id)) return false;
-		return !scoped.has(`${entry.scope}:${entry.id}`) && !scoped.has(entry.id);
+		return !scoped.has(`${entry.scope}:${entry.id}`);
 	});
 }
 
