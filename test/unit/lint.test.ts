@@ -36,7 +36,13 @@ test("validateEntry warns for each rule", () => {
 	const root = makeRoot("/k");
 	const cases: Array<[EntryRecord, string]> = [
 		[makeEntry({ title: "x".repeat(121) }), "title is 121 chars"],
-		[makeEntry({ when: Array.from({ length: 6 }, () => "y".repeat(40)) }), "when totals"],
+		[makeEntry({ when: ["first trigger", "second trigger"] }), "2 when items"],
+		[
+			makeEntry({
+				when: ["one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen"],
+			}),
+			"when has 16 words",
+		],
 		[makeEntry({ body: "short" }), "shorter than 50"],
 		[makeEntry({ body: "see [[zzzzzzzz]] and more text to reach the length minimum here" }), "has no target"],
 		[makeEntry({ supersedes: "zzzzzzzz" }), "supersedes target"],

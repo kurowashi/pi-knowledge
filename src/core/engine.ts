@@ -19,7 +19,7 @@ import {
 	upsertEntry,
 } from "./catalog.ts";
 import { type HostPaths, type KnowledgeConfig, loadConfig } from "./config.ts";
-import { formatSearchHit, formatSearchHits } from "./format.ts";
+import { formatSearchHit, formatSearchHits, nonEnglishNote } from "./format.ts";
 import { lintCatalog } from "./lint.ts";
 import { type RenderedIndex, renderIndex } from "./render.ts";
 import { commandReport } from "./report.ts";
@@ -28,12 +28,13 @@ import { resolveRoots } from "./roots.ts";
 import { capSearchText, scoreEntry, tokenize } from "./search.ts";
 import { SearchService } from "./search_service.ts";
 import type { Backend, CatalogData, Issue, ResolvedRoot, Scope, SearchOptions, SearchResult, Status } from "./types.ts";
-import { findKnowledgeTarget, planWrite, type WriteContext, type WriteOutcome } from "./write_path.ts";
+import { findKnowledgeTarget, planEdit, planWrite, type WriteContext, type WriteOutcome } from "./write_path.ts";
 
 const RECALL_LIMIT = 3;
 const LINT_MESSAGE_LIMIT = 8;
 const SEARCH_CONTENT_TOKENS = 3000;
 const REPORT_LIMIT = 8000;
+const TRUNCATED_NOTE = "kb: more results were omitted to fit the content budget; narrow the query or lower limit";
 
 const CAPTURE_PROMPT = [
 	"Distill reusable knowledge from this session into the project knowledge base.",
@@ -271,6 +272,20 @@ export class Knowledge {
 		return planWrite({ path: input.path }, ctx);
 	}
 
+	/** Decide a file-tool call before it runs. Other tools are not ours to decide. */
+	planFileTool(toolName: string, input: { path?: unknown }): WriteOutcome | null {
+		if (toolName === "write") return this.planWrite(input);
+		if (toolName === "edit") return this.planEdit(input);
+		return null;
+	}
+
+	/** Decide an `edit` call before it runs: only a readonly root refuses it. */
+	private planEdit(input: { path?: unknown }): WriteOutcome | null {
+		const ctx = this.writeContext();
+		if (ctx === null || typeof input.path !== "string") return null;
+		return planEdit({ path: input.path }, ctx);
+	}
+
 	/** A readonly root refuses writes regardless of `write.enforce`. */
 	isReadonlyPath(filePath: string): boolean {
 		const target = findKnowledgeTarget(filePath, this.options.cwd, this.roots);
@@ -347,7 +362,7 @@ export class Knowledge {
 			limit: params.limit ?? 10,
 		};
 		const result = await service.search(options, params.backend ?? config.search.backend);
-		return renderHits(result, this.roots.length > 1);
+		return renderHits(result, this.roots.length > 1, query);
 	}
 
 	/** `/kb status`: resolved state a user can act on (DESIGN.md §16). */
@@ -371,7 +386,7 @@ export class Knowledge {
 			{ query: rest.join(" "), tags: [], status: "active", scope: null, limit: 10 },
 			this.config.search.backend,
 		);
-		const text = formatSearchHits(result.hits, this.roots.length > 1) || "no matches";
+		const text = formatSearchHits(result.hits, this.roots.length > 1) || nonEnglishNote(rest.join(" ")) || "no matches";
 		return result.fallback ? `${text}\n(fallback: ${result.fallbackReason ?? "unavailable"})` : text;
 	}
 
@@ -430,13 +445,19 @@ export class Knowledge {
 }
 
 /** Format search hits for the model within the content budget. */
-function renderHits(result: SearchResult, multiRoot: boolean): ToolResult {
+function renderHits(result: SearchResult, multiRoot: boolean, query: string): ToolResult {
+	if (result.hits.length === 0) {
+		const text = nonEnglishNote(query) ?? "No matches.";
+		return { content: [{ type: "text", text }], details: { ...result, truncated: false } };
+	}
 	const capped = capSearchText(
 		result.hits.map((hit) => formatSearchHit(hit, multiRoot)),
 		SEARCH_CONTENT_TOKENS,
 	);
+	const notes = capped.truncated ? [TRUNCATED_NOTE] : [];
+	const text = [capped.text, ...notes].filter((part) => part !== "").join("\n");
 	return {
-		content: [{ type: "text", text: capped.text || "No matches." }],
+		content: [{ type: "text", text: text || "No matches." }],
 		details: { ...result, truncated: capped.truncated },
 	};
 }

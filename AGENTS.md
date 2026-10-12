@@ -37,7 +37,7 @@
 | ID はモデルが命名し、`^[a-z0-9]+(_[a-z0-9]+)*$`・40文字以内。`[0-9a-f]{8}` は受理する | `test/unit/lint.test.ts` | `src/core/catalog.ts` |
 | プラグインはパスを書き換えない。ID を生成しない | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
 | 既存エントリパスへの `write` は拒否する。更新は `edit` のみ | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
-| readonly root へのファイルツールの書き込みは `write.enforce: "warn"` でも拒否する。shell 経由は既知の gap | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
+| readonly root へのファイルツールの書き込み(`write` / `edit`)は `write.enforce: "warn"` でも拒否する。shell 経由は既知の gap | `test/unit/write_path.test.ts` + `test/integration/extension.test.ts` | `src/core/write_path.ts`、`src/hosts/pi.ts` |
 | root 外と `.md` 以外には干渉しない | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
 | 書き込み前の内容検証をしない。`edit` と `patch` には介入しない | `test/integration/extension.test.ts` | `src/core/engine.ts` |
 | `write` / `edit` の後に lint の error/warning をツール結果に添える。shell は再走査のみ | `test/integration/extension.test.ts` + `test/integration/opencode.test.ts` | `src/core/engine.ts` |
@@ -62,6 +62,7 @@
 | 候補は上限を超える件数を必ず開示し、`scope:id` 参照は自スコープにだけ効く | `test/unit/review.test.ts` | `src/core/review.ts` |
 | `kb dups --max N` は候補ペアが N 超で終了コード1 | `test/unit/cli.test.ts` | `src/cli.ts` |
 | 検索結果の content は tags を含む | `test/integration/extension.test.ts` | `src/core/format.ts` |
+| 検索結果の content が上限を超えたら、省いたことを注記する | `test/integration/extension.test.ts` | `src/core/engine.ts` |
 | embedding 失敗は分類され、検索を止めない | `test/unit/search_service.test.ts` | `src/core/backend_embedding.ts` |
 | backend が使えないとき結果は空にせず、lexical で答え、fallback と理由を必ず示す | `test/unit/search_service.test.ts` | `src/core/search_service.ts` |
 | OpenCode でも fallback をツール結果の本文で示す | `test/integration/opencode.test.ts` | `src/hosts/opencode.ts` |

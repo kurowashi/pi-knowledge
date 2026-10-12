@@ -13,7 +13,7 @@ import { backendArg, loadFixtures, repeatArg, runBench } from "./core/bench.ts";
 import { buildCatalog } from "./core/catalog.ts";
 import { type KnowledgeConfig, loadConfig, SHARED_HOST_PATHS } from "./core/config.ts";
 import { runDocs } from "./core/docs.ts";
-import { formatCatalog, formatIssues, formatSearchHits, formatTagCounts } from "./core/format.ts";
+import { formatCatalog, formatIssues, formatSearchHits, formatTagCounts, nonEnglishNote } from "./core/format.ts";
 import { lintCatalog } from "./core/lint.ts";
 import { findReferences, formatReferences } from "./core/refs.ts";
 import { resolveRoots } from "./core/roots.ts";
@@ -150,6 +150,11 @@ function runFind(rest: string[], catalog: CatalogData, roots: ResolvedRoot[], st
 	};
 }
 
+/** Note for a zero-hit text search; the JSON output already carries an empty hits array. */
+function zeroHitNote(hitCount: number, query: string): string {
+	return hitCount === 0 ? (nonEnglishNote(query) ?? "") : "";
+}
+
 async function runSearch(
 	rest: string[],
 	roots: ResolvedRoot[],
@@ -171,6 +176,7 @@ async function runSearch(
 		args.statusWarning ?? "",
 		args.scopeWarning ?? "",
 		args.backendWarning ?? "",
+		args.json ? "" : zeroHitNote(result.hits.length, args.query),
 	]
 		.filter((note) => note !== "")
 		.join("\n");

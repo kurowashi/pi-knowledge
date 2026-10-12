@@ -41,7 +41,7 @@ function lastUserText(messages: SessionContext["messages"]): string {
 const SEARCH_INPUT = {
 	type: "object",
 	properties: {
-		query: { type: "string", description: "Search terms. Required unless tags are given." },
+		query: { type: "string", description: "English search terms. Required unless tags are given." },
 		tags: { type: "array", items: { type: "string" }, description: "All tags must match (AND)." },
 		status: {
 			type: "string",

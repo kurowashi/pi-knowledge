@@ -329,6 +329,37 @@ test("kb_search explains missing arguments", async () => {
 	});
 });
 
+test("kb_search says that English terms are needed when a non-English query finds nothing", async () => {
+	await withProject(async (cwd) => {
+		writeEntry(path.join(cwd, "knowledge"), "pi_retry_budget", { title: "Alpha", when: "retry budget setup" }, BODY);
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		const japanese = await h.search({ query: "存在しない語" });
+		assert.match(japanese.content[0]?.text ?? "", /English terms/);
+		const english = await h.search({ query: "nonexistent term" });
+		assert.equal(english.content[0]?.text, "No matches.");
+	});
+});
+
+test("kb_search says when results are omitted to fit the content budget", async () => {
+	await withProject(async (cwd) => {
+		const dir = path.join(cwd, "knowledge");
+		for (let index = 0; index < 50; index++) {
+			const id = `pi_budget_entry_${String(index).padStart(2, "0")}`;
+			writeEntry(
+				dir,
+				id,
+				{ title: `Budget ${"word ".repeat(22)}${index}`, when: `budget case ${index}` },
+				BODY.repeat(3),
+			);
+		}
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		const result = await h.search({ query: "budget", limit: 50 });
+		assert.match(result.content[0]?.text ?? "", /more results were omitted/);
+	});
+});
+
 test("commands report and capture", async () => {
 	await withProject(async (cwd) => {
 		writeEntry(path.join(cwd, "knowledge"), "pi_retry_budget", { title: "Alpha", tags: ["x"] }, BODY);
@@ -506,5 +537,29 @@ test("a read-only root is reported through the permission path", async () => {
 		});
 		assert.equal(outcome?.block, true);
 		assert.match(String((outcome as { reason?: string }).reason), /read-only/);
+	});
+});
+
+test("a read-only root refuses edit too, and an edit elsewhere is allowed", async () => {
+	await withProject(async (cwd) => {
+		fs.mkdirSync(path.join(cwd, "shared"), { recursive: true });
+		writeConfig(cwd, ".pi", { roots: [{ path: "shared", scope: "team", readonly: true }] });
+		const h = harness(cwd);
+		h.emit("session_start", session());
+		const refused = h.emit<{ block?: boolean; reason?: string }>("tool_call", {
+			type: "tool_call",
+			toolName: "edit",
+			toolCallId: "t2",
+			input: { path: "shared/anything.md" },
+		});
+		assert.equal(refused?.block, true);
+		assert.match(String(refused?.reason), /read-only/);
+		const allowed = h.emit<{ block?: boolean }>("tool_call", {
+			type: "tool_call",
+			toolName: "edit",
+			toolCallId: "t3",
+			input: { path: "docs/anything.md" },
+		});
+		assert.equal(allowed, undefined);
 	});
 });

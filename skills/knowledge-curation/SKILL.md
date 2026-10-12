@@ -1,6 +1,6 @@
 ---
 name: knowledge-curation
-description: How to name, write, and curate project knowledge entries. Use when recording reusable knowledge, naming a new entry, fixing outdated entries, or consolidating duplicates in a project knowledge base.
+description: Use when recording reusable knowledge, naming or curating entries, fixing outdated entries, or consolidating duplicates in a project knowledge base.
 ---
 
 # Knowledge curation
@@ -27,10 +27,10 @@ A repository-relative `source` makes `kb lint` warn. That is the machine-checkab
 
 ## Writing an entry
 
-1. Search first with `kb_search` using the key terms. If a similar entry exists, update it with `edit` instead of creating a new one.
+1. Search first with `kb_search` using English key terms. If a similar entry exists, update it with `edit` instead of creating a new one.
 2. Create with `write` and the slug path. A `write` onto an existing entry path is refused; use `edit` to update.
 3. Put the conclusion first in the body, then conditions, evidence, counterexamples, and uncertainty.
-4. Frontmatter fields: `title` (required, ≤120 chars), `when` (trigger conditions), `tags`, `status`, `supersedes`, `review_after`, `source`.
+4. Frontmatter fields: `title` (required, ≤120 chars), `when` (one English trigger condition, ≤15 words), `tags`, `status`, `supersedes`, `review_after`, `source`.
 5. Keep one knowledge per entry. Split independent conclusions.
 6. Write source URLs inline in the body for claims; use `source` for the document or implementation the entry came from.
 

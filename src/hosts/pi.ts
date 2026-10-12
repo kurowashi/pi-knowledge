@@ -9,7 +9,8 @@
  * - `session_compact`: rescan and re-render so a continuation after compaction
  *   sees the current knowledge.
  * - `before_agent_start`: apply the index section and the optional recall hint.
- * - `tool_call`: refuse a `write` onto an existing entry (DESIGN.md §7.1).
+ * - `tool_call`: refuse a `write` onto an existing entry and any `write` or `edit`
+ *   on a readonly root (DESIGN.md §7.1).
  * - `tool_result`: refresh the catalog and append lint notes for what changed.
  *
  * The model-facing surface is `kb_search` plus the `/kb` command. No write tools
@@ -71,8 +72,8 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_call", (event, _ctx) => {
-		if (knowledge?.enabled !== true || event.toolName !== "write") return undefined;
-		const outcome = knowledge.planWrite(event.input as { path?: unknown });
+		if (knowledge?.enabled !== true) return undefined;
+		const outcome = knowledge.planFileTool(event.toolName, event.input as { path?: unknown });
 		if (outcome === null) return undefined;
 		if (!outcome.allow) return { block: true, reason: outcome.reason ?? "blocked by pi-knowledge" };
 		if (outcome.notes.length > 0) notesByCall.set(event.toolCallId, outcome.notes);
@@ -97,7 +98,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 			"Supports tag, status, and scope filters.",
 		promptSnippet: "Search project knowledge entries (title, when, tags, body)",
 		parameters: Type.Object({
-			query: Type.Optional(Type.String({ description: "Search terms. Required unless tags are given." })),
+			query: Type.Optional(Type.String({ description: "English search terms. Required unless tags are given." })),
 			tags: Type.Optional(Type.Array(Type.String(), { description: "All tags must match (AND)." })),
 			status: Type.Optional(
 				Type.Union(

@@ -14,8 +14,8 @@ import type { CatalogData, EntryRecord, Issue, ResolvedRoot } from "./types.ts";
 
 const LINK_PATTERN = /\[\[([^\]\s]+)\]\]/g;
 const TITLE_LIMIT = 120;
-const WHEN_TOTAL_LIMIT = 200;
-const WHEN_COUNT_LIMIT = 5;
+const WHEN_WORD_LIMIT = 15;
+const WHEN_COUNT_LIMIT = 1;
 
 export function extractLinks(body: string): string[] {
 	const links: string[] = [];
@@ -50,9 +50,11 @@ function fieldIssues(entry: EntryRecord): Issue[] {
 	const issues: Issue[] = [];
 	if (entry.title.length > TITLE_LIMIT)
 		issues.push(warn(entry, `title is ${entry.title.length} chars (limit ${TITLE_LIMIT})`));
-	const whenChars = entry.when.reduce((sum, item) => sum + item.length, 0);
-	if (whenChars > WHEN_TOTAL_LIMIT)
-		issues.push(warn(entry, `when totals ${whenChars} chars (limit ${WHEN_TOTAL_LIMIT})`));
+	const whenWords = entry.when
+		.join(" ")
+		.split(/\s+/)
+		.filter((word) => word.length > 0).length;
+	if (whenWords > WHEN_WORD_LIMIT) issues.push(warn(entry, `when has ${whenWords} words (limit ${WHEN_WORD_LIMIT})`));
 	if (entry.when.length > WHEN_COUNT_LIMIT)
 		issues.push(warn(entry, `${entry.when.length} when items (limit ${WHEN_COUNT_LIMIT})`));
 	if (entry.body.trim().length < 50) issues.push(warn(entry, "body is empty or shorter than 50 chars"));

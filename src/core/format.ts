@@ -36,6 +36,19 @@ export function formatSearchHit(hit: SearchHit, multiRoot: boolean): string {
 	return `${label}  ${hit.title}${when}${tags}${excerpt}\n  path: ${hit.path}`;
 }
 
+const NON_ENGLISH_NOTE =
+	"kb: no matches. `when` is written in English, so search with English terms; non-English queries can miss it.";
+
+/** True when the text has a character outside ASCII (code point 128 or above). */
+function hasNonAscii(text: string): boolean {
+	return [...text].some((char) => (char.codePointAt(0) ?? 0) > 0x7f);
+}
+
+/** Note for a zero-hit search with a non-English query; null otherwise. */
+export function nonEnglishNote(query: string): string | null {
+	return hasNonAscii(query) ? NON_ENGLISH_NOTE : null;
+}
+
 export function formatSearchHits(hits: SearchHit[], multiRoot: boolean): string {
 	return hits.map((hit) => formatSearchHit(hit, multiRoot)).join("\n");
 }

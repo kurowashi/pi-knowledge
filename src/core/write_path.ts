@@ -61,3 +61,10 @@ export function planWrite(input: { path: string }, ctx: WriteContext): WriteOutc
 	if (ctx.enforce === "block") return refuse(reason);
 	return { allow: true, notes: [`warning: ${reason}`] };
 }
+
+/** `edit` is allowed everywhere except a readonly root (DESIGN.md §5.5, §7.1). */
+export function planEdit(input: { path: string }, ctx: WriteContext): WriteOutcome {
+	const target = findKnowledgeTarget(input.path, ctx.cwd, ctx.roots);
+	if (!target || target.nested || !target.root.readonly) return { allow: true, notes: [] };
+	return refuse(`root ${target.root.display} is read-only`);
+}
