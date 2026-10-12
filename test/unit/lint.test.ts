@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import test from "node:test";
-import { buildCatalog } from "../../src/catalog.ts";
-import { extractLinks, isValidDate, lintCatalog, validateEntry } from "../../src/lint.ts";
-import type { EntryRecord } from "../../src/types.ts";
+import { buildCatalog, isValidEntryId } from "../../src/core/catalog.ts";
+import { extractLinks, isValidDate, lintCatalog, validateEntry } from "../../src/core/lint.ts";
+import type { EntryRecord } from "../../src/core/types.ts";
 import { catalogOf, entryText, makeEntry, makeRoot, withTempDir, writeEntry } from "../helpers/fixtures.ts";
 
 const NOW = new Date("2026-06-01T00:00:00Z");
@@ -21,6 +21,17 @@ test("isValidDate rejects impossible dates", () => {
 	assert.equal(isValidDate("soon"), false);
 });
 
+test("entry ids accept slugs and legacy hex8, and reject everything else", () => {
+	assert.equal(isValidEntryId("pi_retry_budget"), true);
+	assert.equal(isValidEntryId("24b1d146"), true, "ids written before the naming rule stay valid");
+	assert.equal(isValidEntryId("Pi-Retry"), false);
+	assert.equal(isValidEntryId("外部API"), false);
+	assert.equal(isValidEntryId("trailing_"), false);
+	assert.equal(isValidEntryId("_leading"), false);
+	assert.equal(isValidEntryId("a".repeat(41)), false);
+	assert.equal(isValidEntryId("a".repeat(40)), true);
+});
+
 test("validateEntry warns for each rule", () => {
 	const root = makeRoot("/k");
 	const cases: Array<[EntryRecord, string]> = [
@@ -33,7 +44,7 @@ test("validateEntry warns for each rule", () => {
 		[makeEntry({ unknownFields: ["legacy"] }), "unknown frontmatter field"],
 	];
 	for (const [entry, expected] of cases) {
-		const issues = validateEntry(entry, catalogOf([entry]), [root], "/repo", NOW);
+		const issues = validateEntry(entry, catalogOf([entry]), [root], NOW);
 		assert.ok(
 			issues.some((issue) => issue.message.includes(expected)),
 			`expected ${expected} in ${issues.map((issue) => issue.message).join(", ")}`,
@@ -41,9 +52,28 @@ test("validateEntry warns for each rule", () => {
 	}
 });
 
-test("validateEntry warns for a missing source path", () => {
-	const entry = makeEntry({ source: "docs/missing.md" });
-	const issues = validateEntry(entry, catalogOf([entry]), [makeRoot("/k")], "/definitely/missing", NOW);
+test("validateEntry warns when the source records this project's own design", () => {
+	const entry = makeEntry({ source: "pi-knowledge/src/catalog.ts" });
+	const issues = validateEntry(entry, catalogOf([entry]), [makeRoot("/k")], NOW);
+	const issue = issues.find((item) => item.message.includes("points inside this repository"));
+	assert.ok(issue, "a repo-relative source must warn");
+	assert.equal(issue?.level, "warning");
+	assert.ok(!issues.some((item) => item.message.includes("source path not found")));
+});
+
+test("validateEntry keeps external sources quiet", () => {
+	const url = makeEntry({ source: "https://example.com/docs" });
+	const external = makeEntry({ source: process.execPath });
+	const issues = [
+		...validateEntry(url, catalogOf([url]), [makeRoot("/k")], NOW),
+		...validateEntry(external, catalogOf([external]), [makeRoot("/k")], NOW),
+	];
+	assert.deepEqual(issues, []);
+});
+
+test("validateEntry warns for a missing absolute source path", () => {
+	const entry = makeEntry({ source: "/definitely/missing" });
+	const issues = validateEntry(entry, catalogOf([entry]), [makeRoot("/k")], NOW);
 	assert.ok(issues.some((issue) => issue.message.includes("source path not found")));
 });
 
@@ -57,7 +87,7 @@ test("lintCatalog reports duplicates and nested markdown", () => {
 		fs.writeFileSync(path.join(nested, "x.md"), entryText({ title: "Nested" }, BODY));
 		const roots = [makeRoot(dir)];
 		const catalog = buildCatalog(roots, []);
-		const issues = lintCatalog(catalog, roots, cwd, NOW);
+		const issues = lintCatalog(catalog, roots, NOW);
 		assert.ok(issues.some((issue) => issue.message.includes("similar to")));
 		assert.ok(issues.some((issue) => issue.message.includes("nested markdown")));
 	});
@@ -70,8 +100,19 @@ test("lintCatalog reports invalid entries as errors", () => {
 		fs.writeFileSync(path.join(dir, "11111111.md"), "no frontmatter");
 		const roots = [makeRoot(dir)];
 		const catalog = buildCatalog(roots, []);
-		const issues = lintCatalog(catalog, roots, cwd, NOW);
+		const issues = lintCatalog(catalog, roots, NOW);
 		assert.ok(issues.some((issue) => issue.level === "error" && issue.message.includes("no frontmatter")));
+	});
+});
+
+test("lintCatalog ignores markdown whose name is not a valid entry id", () => {
+	withTempDir((cwd) => {
+		const dir = path.join(cwd, "knowledge");
+		writeEntry(dir, "Not_An_Id", { title: "Bad name" }, BODY);
+		const warnings: string[] = [];
+		const catalog = buildCatalog([makeRoot(dir)], warnings);
+		assert.equal(catalog.entries.length, 0);
+		assert.ok(warnings.some((warning) => warning.includes("does not match the entry id rule")));
 	});
 });
 
@@ -79,10 +120,10 @@ test("lintCatalog warns when a superseded entry is still active", () => {
 	const old = makeEntry({ id: "11111111", title: "Old" });
 	const next = makeEntry({ id: "22222222", title: "New", supersedes: "11111111" });
 	const roots = [makeRoot("/k")];
-	const issues = lintCatalog(catalogOf([old, next]), roots, "/repo", NOW);
+	const issues = lintCatalog(catalogOf([old, next]), roots, NOW);
 	assert.ok(issues.some((issue) => issue.message.includes("superseded by 22222222 but status is active")));
 	const inactive = makeEntry({ id: "11111111", title: "Old", status: "superseded" });
-	const clean = lintCatalog(catalogOf([inactive, next]), roots, "/repo", NOW);
+	const clean = lintCatalog(catalogOf([inactive, next]), roots, NOW);
 	assert.ok(!clean.some((issue) => issue.message.includes("but status is active")));
 });
 
@@ -94,7 +135,7 @@ test("lintCatalog reports id collisions between roots as errors", () => {
 		writeEntry(user, "01234567", { title: "U" }, BODY);
 		const roots = [makeRoot(project), makeRoot(user, { scope: "user", priority: 10 })];
 		const catalog = buildCatalog(roots, []);
-		const issues = lintCatalog(catalog, roots, cwd, NOW);
+		const issues = lintCatalog(catalog, roots, NOW);
 		assert.ok(issues.some((issue) => issue.level === "error" && issue.message.includes("exists in 2 roots")));
 	});
 });

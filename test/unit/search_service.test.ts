@@ -4,11 +4,11 @@ import { createServer, type ServerResponse } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import { cosine, embedTexts } from "../../src/backend_embedding.ts";
-import { expandCjk, FtsIndex } from "../../src/backend_fts.ts";
-import { DEFAULT_CONFIG } from "../../src/config.ts";
-import { SearchService } from "../../src/search_service.ts";
-import type { SearchOptions } from "../../src/types.ts";
+import { cosine, embedTexts } from "../../src/core/backend_embedding.ts";
+import { expandCjk, FtsIndex } from "../../src/core/backend_fts.ts";
+import { DEFAULT_CONFIG } from "../../src/core/config.ts";
+import { SearchService } from "../../src/core/search_service.ts";
+import type { SearchOptions } from "../../src/core/types.ts";
 import { catalogOf, makeEntry } from "../helpers/fixtures.ts";
 
 const BODY = "Conclusion first. Then conditions, evidence, and counterexamples for the reader. ";

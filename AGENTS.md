@@ -10,67 +10,86 @@
 フックが通っても CI が通らなければ未完了。CI は同じ `verify` を Node 22.19 / 24 で実行します。
 カバレッジは `test/unit` と `test/integration` で計測します。
 
+## 構成
+
+| 層 | 場所 | 制約 |
+|---|---|---|
+| host 中立のコア | `src/core/` | host パッケージを import しない(§依存関係) |
+| host アダプタ | `src/hosts/pi.ts`、`src/hosts/opencode.ts` | イベント購読・ツール登録・コマンド・設定パス・キャッシュだけを持つ |
+| CLI | `src/cli.ts` | host に依存せず、両 host の project 設定を読む |
+
 ## 制約
 
 ### 表面
 
 | 制約 | 検証 | 定義・実装箇所 |
 |---|---|---|
-| モデル向けツールは `kb_search` の1つだけ | `test/contract/surface.test.ts` | `src/index.ts` |
-| コマンドは `/kb` の1つだけ | `test/contract/surface.test.ts` | `src/index.ts` |
-| イベントは `session_start` / `before_agent_start` / `session_compact` / `tool_call` / `tool_result` の5種で各1ハンドラ | `test/contract/surface.test.ts` | `src/index.ts` |
-| 専用の write 系ツールを登録しない | `test/contract/surface.test.ts` | `src/index.ts` |
+| モデル向けツールは `kb_search` の1つだけ | `test/contract/surface.test.ts` | `src/hosts/pi.ts`、`src/hosts/opencode.ts` |
+| コマンドは `/kb` の1つだけ | `test/contract/surface.test.ts` | `src/hosts/pi.ts`、`src/hosts/opencode.ts` |
+| Pi のイベントは `session_start` / `before_agent_start` / `session_compact` / `tool_call` / `tool_result` の5種で各1ハンドラ | `test/contract/surface.test.ts` | `src/hosts/pi.ts` |
+| opencode の hook は `session:context` / `session:compaction` / `tool:execute.before` / `tool:execute.after` / `permission:evaluate` の5種 | `test/contract/surface.test.ts` | `src/hosts/opencode.ts` |
+| 専用の write 系ツールを登録しない | `test/contract/surface.test.ts` | `src/hosts/*.ts` |
 
 ### 不変条件
 
 | 制約 | 検証 | 定義・実装箇所 |
 |---|---|---|
-| ID はプラグインが付与し、`[0-9a-f]{8}`。モデルは生成しない | `test/unit/hooks.test.ts` | `src/hooks.ts` |
-| 既存エントリへの `write` は常にブロック。更新は `edit` のみ | `test/unit/hooks.test.ts` | `src/hooks.ts` |
-| readonly・shadow への書き込みは `write.enforce: "warn"` でもブロック | `test/unit/hooks.test.ts` | `src/hooks.ts` |
-| ルート外と `.md` 以外には干渉しない | `test/unit/hooks.test.ts` | `src/hooks.ts` |
-| 注入は session_start と `session_compact` 後に再生成し、それ以外のセッション中は更新しない | `test/integration/extension.test.ts` | `src/index.ts` |
-| 注入は実効予算内に縮退する。固定費が上回る場合はヘッダのみを注入し `overBudget` を表示する | `test/unit/render.test.ts` | `src/render.ts` |
-| 固定文・ツール宣言・スキルはトークン予算内 | `test/contract/budget.test.ts` | `src/render.ts` |
-| lint サマリは error/warning があるとき、上位8件を session_start ごとに1回モデルへ送る | `test/integration/extension.test.ts` | `src/index.ts` |
-| 本文は注入しない | `test/unit/render.test.ts` | `src/render.ts` |
-| 文書索引は生成物自身とバイナリを除外し、注入しない | `test/unit/docs.test.ts` | `src/docs.ts` |
-| Git 不在・shallow では git 日付をスキップして警告 | `test/unit/stale.test.ts` | `src/stale.ts` |
-| refs は `[[id]]` と `supersedes`(`scope:id` を含む)を拾う | `test/unit/refs.test.ts` | `src/refs.ts` |
-| 未知フィールドは catalog が無視し lint が警告する | `test/unit/catalog.test.ts` + `test/unit/lint.test.ts` | `src/catalog.ts` |
-| 同一エントリの tags は重複除去する | `test/unit/catalog.test.ts` | `src/catalog.ts` |
-| supersede で置換された active エントリは lint 警告する | `test/unit/lint.test.ts` | `src/lint.ts` |
-| `/kb review` は候補を `sendUserMessage` で渡す(プラグイン自身は書き込まない) | `test/integration/extension.test.ts` + `test/contract/surface.test.ts` | `src/index.ts` |
+| ID はモデルが命名し、`^[a-z0-9]+(_[a-z0-9]+)*$`・40文字以内。`[0-9a-f]{8}` は受理する | `test/unit/lint.test.ts` | `src/core/catalog.ts` |
+| プラグインはパスを書き換えない。ID を生成しない | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
+| 既存エントリパスへの `write` は拒否する。更新は `edit` のみ | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
+| readonly root への書き込みは `write.enforce: "warn"` でも拒否する | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
+| root 外と `.md` 以外には干渉しない | `test/unit/write_path.test.ts` | `src/core/write_path.ts` |
+| 書き込み前の内容検証をしない。`edit` と `patch` には介入しない | `test/integration/extension.test.ts` | `src/core/engine.ts` |
+| 書き込み後に lint の error/warning をツール結果に添える | `test/integration/extension.test.ts` | `src/core/engine.ts` |
+| 注入はセッション開始と compaction 後に再生成し、それ以外のセッション中は更新しない | `test/integration/extension.test.ts` | `src/core/engine.ts` |
+| 注入は実効予算内に縮退する。固定費が上回る場合はヘッダのみを注入し `overBudget` を表示する | `test/unit/render.test.ts` | `src/core/render.ts` |
+| 固定文・ツール宣言・スキルはトークン予算内 | `test/contract/budget.test.ts` | `src/core/render.ts` |
+| lint サマリは error/warning があるとき、上位8件をセッションごとに1回モデルへ送る | `test/integration/extension.test.ts` | `src/core/engine.ts` |
+| 本文は注入しない | `test/unit/render.test.ts` | `src/core/render.ts` |
+| 文書索引は生成物自身とバイナリを除外し、注入しない | `test/unit/docs.test.ts` | `src/core/docs.ts` |
+| `source` がリポジトリ内相対パスなら lint が警告する(自己仕様の転記) | `test/unit/lint.test.ts` | `src/core/lint.ts` |
+| Git 不在・shallow では git 日付をスキップして警告 | `test/unit/stale.test.ts` | `src/core/stale.ts` |
+| refs は `[[id]]` と `supersedes`(`scope:id` を含む)を拾う | `test/unit/refs.test.ts` | `src/core/refs.ts` |
+| 未知フィールドは catalog が無視し lint が警告する | `test/unit/catalog.test.ts` + `test/unit/lint.test.ts` | `src/core/catalog.ts` |
+| 同一エントリの tags は重複除去する | `test/unit/catalog.test.ts` | `src/core/catalog.ts` |
+| supersede で置換された active エントリは lint 警告する | `test/unit/lint.test.ts` | `src/core/lint.ts` |
+| ID の重複(root をまたぐ shadow)は lint error にする | `test/unit/lint.test.ts` | `src/core/lint.ts` |
+| `/kb review` は候補をモデルへ渡す(プラグイン自身は書き込まない) | `test/integration/extension.test.ts` | `src/core/review.ts`、`src/core/engine.ts` |
+| `/kb review` の候補は重複・陳腐化・未参照を出し、ID だけを単独で表示しない | `test/integration/extension.test.ts` + `test/unit/similar.test.ts` | `src/core/review.ts`、`src/core/similar.ts` |
 | `kb dups --max N` は候補ペアが N 超で終了コード1 | `test/unit/cli.test.ts` | `src/cli.ts` |
-| 検索結果の content は tags を含む | `test/integration/extension.test.ts` | `src/format.ts` |
-| 利用不可の backend は lexical へフォールバックし、理由を必ず表示する | `test/unit/search_service.test.ts` | `src/search_service.ts` |
-| embedding 失敗は分類され、検索を止めない | `test/unit/search_service.test.ts` | `src/backend_embedding.ts` |
-| FTS5 が無い環境でも lexical で動く | `test/unit/search_service.test.ts` | `src/backend_fts.ts` |
+| 検索結果の content は tags を含む | `test/integration/extension.test.ts` | `src/core/format.ts` |
+| 利用不可の backend は lexical へフォールバックし、理由を必ず表示する | `test/unit/search_service.test.ts` | `src/core/search_service.ts` |
+| embedding 失敗は分類され、検索を止めない | `test/unit/search_service.test.ts` | `src/core/backend_embedding.ts` |
+| FTS5 が無い環境でも lexical で動く | `test/unit/search_service.test.ts` | `src/core/backend_fts.ts` |
 
 ### 設定
 
 | 制約 | 検証 | 定義・実装箇所 |
 |---|---|---|
-| 設定はグローバル→プロジェクトの順にマージし、project が優先 | `test/unit/config.test.ts` | `src/config.ts` |
-| 未信頼プロジェクトの設定は無視する | `test/unit/config.test.ts` | `src/config.ts` |
-| 壊れた設定は警告して既定値で動き、セッションを止めない | `test/unit/config.test.ts` | `src/config.ts` |
-| 同一 scope の root は優先度の高い1つだけ有効。有効 root は最大3 | `test/unit/roots.test.ts` | `src/roots.ts` |
-| `floorTokens` > `maxTokens` は `maxTokens` に補正する | `test/unit/config.test.ts` | `src/config.ts` |
-| team root は書き込みを常にブロックする | `test/unit/hooks.test.ts` | `src/hooks.ts` |
-| FTS5・埋め込みキャッシュは指紋一致時のみ再利用し、壊れていても再構築できる | `test/unit/index_cache.test.ts` + `test/unit/search_service.test.ts` | `src/index_cache.ts` |
-| キャッシュ無効でも検索は動作する | `test/unit/search_service.test.ts` | `src/search_service.ts` |
+| 設定はグローバル→プロジェクトの順にマージし、project が優先 | `test/unit/config.test.ts` | `src/core/config.ts` |
+| 未信頼プロジェクトの設定は無視する | `test/unit/config.test.ts` | `src/core/config.ts` |
+| 壊れた設定は警告して既定値で動き、セッションを止めない | `test/unit/config.test.ts` | `src/core/config.ts` |
+| `kb` は両 host の project 設定を読み、agent と CI が同じ解決になる | `test/unit/config.test.ts` | `src/core/config.ts` |
+| キャッシュディレクトリだけ host ごとに違う | `test/unit/config.test.ts` | `src/core/config.ts` |
+| 同一 scope の root は優先度の高い1つだけ有効。有効 root は最大3 | `test/unit/roots.test.ts` | `src/core/roots.ts` |
+| `floorTokens` > `maxTokens` は `maxTokens` に補正する | `test/unit/config.test.ts` | `src/core/config.ts` |
+| FTS5・埋め込みキャッシュは指紋一致時のみ再利用し、壊れていても再構築できる | `test/unit/index_cache.test.ts` + `test/unit/search_service.test.ts` | `src/core/index_cache.ts` |
+| キャッシュ無効でも検索は動作する | `test/unit/search_service.test.ts` | `src/core/search_service.ts` |
 
 ### 依存関係・配布
 
 | 制約 | 検証 | 定義・実装箇所 |
 |---|---|---|
 | 実行時依存を持たない(`dependencies` は空) | `test/contract/dependencies.test.ts` | `package.json` |
-| `src` の import は node builtin・相対 `.ts`・Pi 提供パッケージのみ | `test/contract/dependencies.test.ts` | `test/contract/dependencies.test.ts` |
+| `src/core` は host パッケージを import しない | `test/contract/dependencies.test.ts` | `src/core/` |
+| `@opencode/plugin` は型のみの import。実行時に読まない | `test/contract/dependencies.test.ts` | `src/hosts/opencode.ts` |
+| `src` の import は node builtin・相対 `.ts`・host パッケージのみ | `test/contract/dependencies.test.ts` | `test/contract/dependencies.test.ts` |
 | 循環依存を作らない | `npx biome check .` | `biome.jsonc` の `noImportCycles` |
 | 未宣言の依存を import しない(import 元パッケージの `package.json` へ先に宣言する) | `npx biome check .` | `biome.jsonc` の `noUndeclaredDependencies` |
 | 未使用の export・依存・ファイルを検出しない | `npm run knip` | `knip.jsonc` |
 | 配布物は `files` の whitelist 内のみ | `test/ci/package-contents.test.ts` | `package.json` |
 | ビルド工程を持たない(TS を直接配布) | `test/ci/package-contents.test.ts` | `package.json` |
+| Pi は `pi.extensions`、opencode は `exports` の `./server` で同じパッケージを読む | `test/ci/package-contents.test.ts` | `package.json` |
 
 ### コード品質
 
@@ -84,7 +103,9 @@
 
 ## 変更時の手順
 
-- 表面(ツール・コマンド・イベント)を増減する場合は `test/contract/surface.test.ts` を先に更新する。
+- host 依存を `src/core` に持ち込まない。挙動を両 host で揃えたい場合は `src/core` に置き、アダプタは呼び出しだけを書く。
+- 表面(ツール・コマンド・hook)を増減する場合は `test/contract/surface.test.ts` を先に更新する。
 - 不変条件を変える場合は DESIGN.md を先に更新し、対応するテストを同じ変更で更新する。
 - 用語・設定キーを追加する場合は DESIGN.md の用語表または設定スキーマに定義を追加する。
 - 新しいフェーズの機能を追加する場合は DESIGN.md の実装フェーズと README を同じ変更で更新する。
+- 知识(エントリ)を追加・更新する判断の正は DESIGN.md §11.5 の採用規則にある。設計の転記を書かない。

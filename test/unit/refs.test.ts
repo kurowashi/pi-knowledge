@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findReferences, formatReferences } from "../../src/refs.ts";
+import { findReferences, formatReferences } from "../../src/core/refs.ts";
 import { catalogOf, makeEntry } from "../helpers/fixtures.ts";
 
 test("findReferences finds plain links, scoped links, and supersedes", () => {

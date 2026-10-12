@@ -1,8 +1,10 @@
 /**
  * Catalog: scan roots, parse entries, and resolve id collisions.
  *
- * A `.md` directly under a root whose filename is `<hex8>.md` is an entry.
- * Parse or type errors exclude the entry from the catalog (`invalid`).
+ * A `.md` directly under a root whose filename matches the entry-id pattern is
+ * an entry. The model names the id when it writes the file (DESIGN.md §6.3);
+ * this module only recognizes it. Parse or type errors exclude the entry from
+ * the catalog (`invalid`).
  */
 
 import * as fs from "node:fs";
@@ -11,7 +13,11 @@ import { parseFrontmatter } from "./frontmatter.ts";
 import { isValidDate } from "./lint.ts";
 import type { CatalogData, EntryRecord, InvalidEntry, ResolvedRoot, Status } from "./types.ts";
 
-export const ID_PATTERN = /^[0-9a-f]{8}$/;
+/** Model-named entry id. `[0-9a-f]{8}` is a subset, so ids written before the
+ *  naming rule changed stay valid without migration (DESIGN.md §6.3). */
+const ID_PATTERN = /^[a-z0-9]+(_[a-z0-9]+)*$/;
+const ID_MAX_LENGTH = 40;
+const ID_RULE = `${ID_PATTERN.source}, max ${ID_MAX_LENGTH} chars`;
 const STATUSES: readonly Status[] = ["active", "superseded", "deprecated"];
 const KNOWN_FIELDS = new Set(["title", "when", "tags", "status", "supersedes", "review_after", "source"]);
 
@@ -124,6 +130,11 @@ export function parseEntryText(
 	};
 }
 
+/** Whether a file name (without `.md`) can be an entry id. */
+export function isValidEntryId(id: string): boolean {
+	return id.length <= ID_MAX_LENGTH && ID_PATTERN.test(id);
+}
+
 export function parseEntryFile(filePath: string, root: ResolvedRoot): ParseResult {
 	let text: string;
 	let stat: fs.Stats;
@@ -183,8 +194,8 @@ function scanFile(
 	cache: Map<string, EntryRecord> | undefined,
 ): EntryRecord | InvalidEntry | null {
 	const id = name.slice(0, -3);
-	if (!ID_PATTERN.test(id)) {
-		warnings.push(`knowledge: ${root.display}/${name} is not <hex8>.md; not an entry`);
+	if (!isValidEntryId(id)) {
+		warnings.push(`knowledge: ${root.display}/${name} does not match the entry id rule (${ID_RULE}); not an entry`);
 		return null;
 	}
 	const filePath = path.join(root.dir, name);

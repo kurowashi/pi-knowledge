@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { CatalogData, EntryRecord, ResolvedRoot } from "../../src/types.ts";
+import type { CatalogData, EntryRecord, ResolvedRoot } from "../../src/core/types.ts";
 
 export function makeRoot(dir: string, overrides: Partial<ResolvedRoot> = {}): ResolvedRoot {
 	return { display: "knowledge", scope: "project", dir, priority: 100, readonly: false, ...overrides };
@@ -75,13 +75,20 @@ export function withTempDir<T>(fn: (dir: string) => T): T {
 }
 
 export function withAgentDir<T>(dir: string, fn: () => T): T {
-	const saved = process.env["PI_CODING_AGENT_DIR"];
-	process.env["PI_CODING_AGENT_DIR"] = dir;
+	return withEnv({ PI_CODING_AGENT_DIR: dir }, fn);
+}
+
+/** Run `fn` with environment variables set, restoring the previous values. */
+export function withEnv<T>(vars: Record<string, string>, fn: () => T): T {
+	const saved: Array<[string, string | undefined]> = Object.keys(vars).map((key) => [key, process.env[key]]);
+	for (const [key, value] of Object.entries(vars)) process.env[key] = value;
 	try {
 		return fn();
 	} finally {
-		if (saved === undefined) delete process.env["PI_CODING_AGENT_DIR"];
-		else process.env["PI_CODING_AGENT_DIR"] = saved;
+		for (const [key, value] of saved) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
 	}
 }
 

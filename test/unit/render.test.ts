@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_CONFIG } from "../../src/config.ts";
+import { DEFAULT_CONFIG } from "../../src/core/config.ts";
 import {
 	effectiveBudget,
 	FIXED_TEXT,
@@ -10,8 +10,8 @@ import {
 	SKILL_TOKEN_BUDGET,
 	TOOL_TOKEN_BUDGET,
 	truncate,
-} from "../../src/render.ts";
-import { estimateTokens } from "../../src/tokens.ts";
+} from "../../src/core/render.ts";
+import { estimateTokens } from "../../src/core/tokens.ts";
 import { catalogOf, makeEntry, makeRoot } from "../helpers/fixtures.ts";
 
 test("effectiveBudget clamps by window, floor, and max", () => {

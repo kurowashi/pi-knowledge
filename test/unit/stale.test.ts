@@ -3,8 +3,8 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import test from "node:test";
-import { DEFAULT_CONFIG } from "../../src/config.ts";
-import { formatStale, staleReport } from "../../src/stale.ts";
+import { DEFAULT_CONFIG } from "../../src/core/config.ts";
+import { formatStale, staleReport } from "../../src/core/stale.ts";
 import { catalogOf, makeEntry, withTempDir } from "../helpers/fixtures.ts";
 
 const NOW = new Date("2026-06-01T00:00:00Z");

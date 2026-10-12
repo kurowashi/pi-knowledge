@@ -5,12 +5,13 @@ import test from "node:test";
 import {
 	DEFAULT_CONFIG,
 	deepMerge,
-	globalConfigPath,
 	loadConfig,
-	projectConfigPath,
+	OPENCODE_HOST_PATHS,
+	piGlobalConfigFile,
 	resolveConfig,
-} from "../../src/config.ts";
-import { withAgentDir, withTempDir } from "../helpers/fixtures.ts";
+	SHARED_HOST_PATHS,
+} from "../../src/core/config.ts";
+import { withAgentDir, withEnv, withTempDir } from "../helpers/fixtures.ts";
 
 test("defaults resolve with no raw config", () => {
 	const warnings: string[] = [];
@@ -81,9 +82,9 @@ test("loadConfig merges global and project configs and honors trust", () => {
 		const agent = path.join(cwd, "agent");
 		fs.mkdirSync(agent, { recursive: true });
 		withAgentDir(agent, () => {
-			fs.writeFileSync(globalConfigPath(), JSON.stringify({ injection: { maxTokens: 1234 } }));
+			fs.writeFileSync(piGlobalConfigFile(), JSON.stringify({ injection: { maxTokens: 1234 } }));
 			fs.mkdirSync(path.join(cwd, ".pi"), { recursive: true });
-			fs.writeFileSync(projectConfigPath(cwd), JSON.stringify({ injection: { maxTokens: 99 } }));
+			fs.writeFileSync(path.join(cwd, ".pi", "knowledge.json"), JSON.stringify({ injection: { maxTokens: 99 } }));
 			assert.equal(loadConfig(cwd, true).config.injection.maxTokens, 99);
 			assert.equal(loadConfig(cwd, false).config.injection.maxTokens, 1234);
 		});
@@ -95,9 +96,9 @@ test("broken config files warn and never throw", () => {
 		const agent = path.join(cwd, "agent");
 		fs.mkdirSync(agent, { recursive: true });
 		withAgentDir(agent, () => {
-			fs.writeFileSync(globalConfigPath(), "{not json");
+			fs.writeFileSync(piGlobalConfigFile(), "{not json");
 			fs.mkdirSync(path.join(cwd, ".pi"), { recursive: true });
-			fs.writeFileSync(projectConfigPath(cwd), "[]");
+			fs.writeFileSync(path.join(cwd, ".pi", "knowledge.json"), "[]");
 			const loaded = loadConfig(cwd, true);
 			assert.equal(loaded.config.enabled, true);
 			assert.equal(loaded.warnings.length, 2);
@@ -125,4 +126,29 @@ test("team scope and cache config resolve", () => {
 	const warnings: string[] = [];
 	assert.equal(resolveConfig([{ cache: { enabled: "yes" } }], warnings).cache.enabled, true);
 	assert.ok(warnings.some((warning) => warning.includes("cache.enabled")));
+});
+
+test("each host resolves its own cache directory but keeps its own config sources", () => {
+	assert.equal(OPENCODE_HOST_PATHS.cacheDirName, ".opencode");
+	assert.equal(SHARED_HOST_PATHS.cacheDirName, ".pi");
+	withTempDir((cwd) => {
+		withEnv({ XDG_CONFIG_HOME: path.join(cwd, "xdg") }, () => {
+			assert.deepEqual(OPENCODE_HOST_PATHS.globalConfigFiles(), [path.join(cwd, "xdg", "opencode", "knowledge.json")]);
+		});
+	});
+});
+
+test("kb reads both hosts' project config so CI matches the agent", () => {
+	withTempDir((cwd) => {
+		fs.mkdirSync(path.join(cwd, ".pi"), { recursive: true });
+		fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+		fs.writeFileSync(path.join(cwd, ".pi", "knowledge.json"), JSON.stringify({ stale: { days: 10 } }));
+		fs.writeFileSync(path.join(cwd, ".opencode", "knowledge.json"), JSON.stringify({ search: { backend: "fts5" } }));
+		const shared = loadConfig(cwd, true, SHARED_HOST_PATHS).config;
+		assert.equal(shared.stale.days, 10, "kb sees the Pi config");
+		assert.equal(shared.search.backend, "fts5", "kb sees the OpenCode config");
+		const opencode = loadConfig(cwd, true, OPENCODE_HOST_PATHS).config;
+		assert.equal(opencode.stale.days, 365, "the OpenCode host ignores .pi");
+		assert.equal(opencode.search.backend, "fts5");
+	});
 });

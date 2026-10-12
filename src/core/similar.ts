@@ -58,6 +58,15 @@ export function findDuplicatePairs(catalog: CatalogData, threshold = DUPLICATE_T
 	return pairs.sort((x, y) => y.score - x.score || x.a.id.localeCompare(y.a.id));
 }
 
+/**
+ * One line per pair. Titles are included so an id never appears alone: an id
+ * without its title is unreadable to both a human and the model judging it.
+ */
 export function formatDuplicatePairs(pairs: DuplicatePair[]): string {
-	return pairs.map((pair) => `${pair.a.id}  ${pair.b.id}  ${pair.score.toFixed(2)}`).join("\n");
+	return pairs
+		.map(
+			(pair) =>
+				`${pair.a.id} ${pair.a.title}\n  vs ${pair.b.id} ${pair.b.title}\n  similarity ${pair.score.toFixed(2)}`,
+		)
+		.join("\n");
 }

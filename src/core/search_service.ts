@@ -19,6 +19,8 @@ const RRF_K = 60;
 export interface SearchCacheOptions {
 	cwd: string;
 	enabled: boolean;
+	/** Host cache directory name, relative to cwd (`.pi` or `.opencode`). */
+	cacheDirName?: string;
 }
 
 export interface BackendStatus {
@@ -42,6 +44,7 @@ export class SearchService {
 	private readonly catalog: CatalogData;
 	private readonly config: KnowledgeConfig;
 	private readonly cacheCwd: string;
+	private readonly cacheDirName: string;
 	private readonly cacheEnabled: boolean;
 	private readonly fts: FtsIndex;
 	private embeddingVectors: Map<string, number[]> | null = null;
@@ -52,8 +55,9 @@ export class SearchService {
 		this.catalog = catalog;
 		this.config = config;
 		this.cacheCwd = cache?.cwd ?? "";
+		this.cacheDirName = cache?.cacheDirName ?? ".pi";
 		this.cacheEnabled = cache?.enabled === true && this.cacheCwd !== "";
-		const dbPath = this.cacheEnabled ? path.join(this.cacheCwd, ".pi", "knowledge-fts.sqlite") : null;
+		const dbPath = this.cacheEnabled ? this.cacheFile("knowledge-fts.sqlite") : null;
 		this.fts = new FtsIndex(catalog, {
 			dbPath,
 			fingerprint: dbPath === null ? null : fingerprintCatalog(catalog, "fts5"),
@@ -112,7 +116,7 @@ export class SearchService {
 	}
 
 	private cacheFile(name: string): string | null {
-		return this.cacheEnabled ? path.join(this.cacheCwd, ".pi", name) : null;
+		return this.cacheEnabled ? path.join(this.cacheCwd, this.cacheDirName, name) : null;
 	}
 
 	private async embeddingIndex(): Promise<FallbackReason | null> {

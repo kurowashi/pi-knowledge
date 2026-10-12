@@ -103,7 +103,7 @@ test("stale, dups, and refs report from the catalog", async () => {
 		assert.match(stale.stdout, /review_after: 2020-01-01/);
 		const dups = await execute(["dups"], cwd);
 		assert.equal(dups.code, 0);
-		assert.match(dups.stdout, /11111111 {2}33333333 {2}0\.9/);
+		assert.match(dups.stdout, /11111111 Alpha\n {2}vs 33333333 Alpha\n {2}similarity 0\.9/);
 		assert.equal((await execute(["dups", "--max", "1"], cwd)).code, 0);
 		assert.equal((await execute(["dups", "--max", "0"], cwd)).code, 1);
 		assert.equal((await execute(["dups", "--max", "nope"], cwd)).code, 2);

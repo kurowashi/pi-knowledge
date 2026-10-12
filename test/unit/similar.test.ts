@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findDuplicatePairs, formatDuplicatePairs } from "../../src/similar.ts";
+import { findDuplicatePairs, formatDuplicatePairs } from "../../src/core/similar.ts";
 import { catalogOf, makeEntry } from "../helpers/fixtures.ts";
 
 const BODY = "Conclusion first. Then conditions, evidence, and counterexamples for the reader. ";
@@ -11,7 +11,20 @@ test("findDuplicatePairs finds near-identical active entries", () => {
 	const c = makeEntry({ id: "33333333", title: "Different", body: "unrelated words entirely here" });
 	const pairs = findDuplicatePairs(catalogOf([a, b, c]));
 	assert.equal(pairs.length, 1);
-	assert.equal(formatDuplicatePairs(pairs), "11111111  22222222  1.00");
+	assert.equal(formatDuplicatePairs(pairs), "11111111 Same\n  vs 22222222 Same\n  similarity 1.00");
+});
+
+test("formatDuplicatePairs never shows an id without its title", () => {
+	const a = makeEntry({ id: "pi_retry_budget", title: "Retry budget" });
+	const b = makeEntry({ id: "pi_retry_limits", title: "Retry limits", body: BODY });
+	const text = formatDuplicatePairs(findDuplicatePairs(catalogOf([a, b]), 0));
+	assert.match(text, /pi_retry_budget Retry budget/);
+	assert.match(text, /pi_retry_limits Retry limits/);
+	const bare = text
+		.split("\n")
+		.filter((line) => line.includes(a.id) || line.includes(b.id))
+		.filter((line) => line.split(" ").filter((word) => word !== "").length < 2);
+	assert.deepEqual(bare, [], "every id line carries a title too");
 });
 
 test("inactive entries and low similarity are ignored", () => {

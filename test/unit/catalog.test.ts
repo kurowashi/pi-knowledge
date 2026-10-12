@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import test from "node:test";
-import { buildCatalog, parseEntryText, removeEntry, rescanCatalog, upsertEntry } from "../../src/catalog.ts";
+import { buildCatalog, parseEntryText, removeEntry, rescanCatalog, upsertEntry } from "../../src/core/catalog.ts";
 import { entryText, makeEntry, makeRoot, withTempDir, writeEntry } from "../helpers/fixtures.ts";
 
 const BODY = "Conclusion first. Then conditions, evidence, and counterexamples for the reader. ";
@@ -82,14 +82,15 @@ test("a minimal valid entry parses", () => {
 test("buildCatalog skips non-entry names and collects invalid entries", () => {
 	withTempDir((cwd) => {
 		const dir = path.join(cwd, "knowledge");
-		writeEntry(dir, "01234567", { title: "Good" }, BODY);
+		writeEntry(dir, "pi_retry_budget", { title: "Good" }, BODY);
+		writeEntry(dir, "01234567", { title: "Legacy id" }, BODY);
 		fs.writeFileSync(path.join(dir, "README.md"), "# docs");
-		fs.writeFileSync(path.join(dir, "11111111.md"), "no frontmatter here");
+		fs.writeFileSync(path.join(dir, "Not An Id.md"), "no frontmatter here");
 		const warnings: string[] = [];
 		const catalog = buildCatalog([makeRoot(dir)], warnings);
-		assert.equal(catalog.entries.length, 1);
-		assert.equal(catalog.invalid.length, 1);
-		assert.ok(warnings.some((warning) => warning.includes("not <hex8>.md")));
+		assert.equal(catalog.entries.length, 2, "slugs and legacy hex8 ids are both entries");
+		assert.equal(catalog.invalid.length, 0, "an invalid name is skipped, not parsed");
+		assert.ok(warnings.some((warning) => warning.includes("does not match the entry id rule")));
 	});
 });
 

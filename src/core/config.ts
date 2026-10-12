@@ -1,10 +1,10 @@
 /**
  * Config discovery, merge, and validation.
  *
- * Files merge nearest-last: the global config at
- * `$PI_CODING_AGENT_DIR/knowledge.json` (or `~/.pi/agent/knowledge.json`) is
- * read first, then the project config at `<cwd>/.pi/knowledge.json` overrides
- * it key by key. Project configs are ignored when the project is not trusted.
+ * Files merge nearest-last: global files first (Pi's agent dir, then OpenCode's
+ * config dir), then project directories (`.pi`, then `.opencode`), each
+ * overriding the previous key by key. Reading both hosts keeps `kb` in CI
+ * consistent with whichever agent loaded the session (DESIGN.md §15.1).
  *
  * Unknown keys are ignored and invalid values fall back to the default with a
  * warning, so a broken config never breaks a session.
@@ -60,6 +60,62 @@ export interface KnowledgeConfig {
 
 const CONFIG_FILE_NAME = "knowledge.json";
 
+/**
+ * Where a host reads configuration and writes its search cache.
+ *
+ * `globalConfigFiles()` is a function because `PI_CODING_AGENT_DIR` and
+ * `XDG_CONFIG_HOME` are read at call time, not at module load.
+ *
+ * The config sources are shared by every host and by the CLI, so one resolved
+ * config governs both the agent and CI. `cacheDirName` is per-host: two hosts
+ * may run against the same checkout at the same time.
+ */
+export interface HostPaths {
+	globalConfigFiles(): readonly string[];
+	projectConfigDirs: readonly string[];
+	cacheDirName: string;
+}
+
+function piAgentDir(): string {
+	const override = process.env["PI_CODING_AGENT_DIR"]?.trim();
+	return override && override.length > 0 ? override : path.join(os.homedir(), ".pi", "agent");
+}
+
+function opencodeConfigDir(): string {
+	const xdg = process.env["XDG_CONFIG_HOME"]?.trim();
+	const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".config");
+	return path.join(base, "opencode");
+}
+
+/** Pi's global config file. */
+export function piGlobalConfigFile(): string {
+	return path.join(piAgentDir(), CONFIG_FILE_NAME);
+}
+
+/** Pi's layout. The CLI uses this so `kb` needs no host flag. */
+export const PI_HOST_PATHS: HostPaths = {
+	globalConfigFiles: () => [piGlobalConfigFile()],
+	projectConfigDirs: [".pi"],
+	cacheDirName: ".pi",
+};
+
+/** OpenCode's layout; config sources stay shared, only the cache moves. */
+export const OPENCODE_HOST_PATHS: HostPaths = {
+	globalConfigFiles: () => [path.join(opencodeConfigDir(), CONFIG_FILE_NAME)],
+	projectConfigDirs: [".opencode"],
+	cacheDirName: ".opencode",
+};
+
+/**
+ * Config from both hosts, lowest precedence first; the cache stays in Pi's dir.
+ * Used by `kb` so CI resolves the same config whichever agent wrote the repo.
+ */
+export const SHARED_HOST_PATHS: HostPaths = {
+	globalConfigFiles: () => [piGlobalConfigFile(), path.join(opencodeConfigDir(), CONFIG_FILE_NAME)],
+	projectConfigDirs: [".pi", ".opencode"],
+	cacheDirName: ".pi",
+};
+
 export const DEFAULT_CONFIG: KnowledgeConfig = {
 	enabled: true,
 	roots: [{ path: "knowledge", scope: "project", priority: 100, readonly: false }],
@@ -75,19 +131,6 @@ export const DEFAULT_CONFIG: KnowledgeConfig = {
 	stale: { days: 365 },
 	cache: { enabled: true },
 };
-
-function agentDir(): string {
-	const override = process.env["PI_CODING_AGENT_DIR"]?.trim();
-	return override && override.length > 0 ? override : path.join(os.homedir(), ".pi", "agent");
-}
-
-export function globalConfigPath(): string {
-	return path.join(agentDir(), CONFIG_FILE_NAME);
-}
-
-export function projectConfigPath(cwd: string): string {
-	return path.join(cwd, ".pi", CONFIG_FILE_NAME);
-}
 
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -272,27 +315,24 @@ function message(error: unknown): string {
 export interface LoadedConfig {
 	config: KnowledgeConfig;
 	warnings: string[];
-	globalFile: string;
-	projectFile: string;
+	/** Every file that was read, lowest precedence first. */
+	files: string[];
 }
 
-export function loadConfig(cwd: string, trusted: boolean): LoadedConfig {
-	const globalFile = globalConfigPath();
-	const projectFile = projectConfigPath(cwd);
+export function loadConfig(cwd: string, trusted: boolean, paths: HostPaths = PI_HOST_PATHS): LoadedConfig {
+	const globalFiles = paths.globalConfigFiles();
+	const projectFiles = paths.projectConfigDirs.map((dir) => path.join(cwd, dir, CONFIG_FILE_NAME));
 	const warnings: string[] = [];
 	const raws: Record<string, unknown>[] = [];
-	const global = readConfigFile(globalFile);
-	if (global.warning) warnings.push(global.warning);
-	if (global.value) raws.push(global.value);
-	if (trusted) {
-		const project = readConfigFile(projectFile);
-		if (project.warning) warnings.push(project.warning);
-		if (project.value) raws.push(project.value);
+	for (const file of [...globalFiles, ...(trusted ? projectFiles : [])]) {
+		const read = readConfigFile(file);
+		if (read.warning) warnings.push(read.warning);
+		if (read.value) raws.push(read.value);
 	}
 	const config = resolveConfig(raws, warnings);
 	// The default root is implicit: when no config declares roots and the
 	// conventional directory is absent, the plugin is a silent no-op.
 	const rootsDeclared = raws.some((raw) => raw["roots"] !== undefined);
 	if (!rootsDeclared && !fs.existsSync(path.resolve(cwd, "knowledge"))) config.roots = [];
-	return { config, warnings, globalFile, projectFile };
+	return { config, warnings, files: [...globalFiles, ...(trusted ? projectFiles : [])] };
 }

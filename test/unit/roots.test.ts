@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import test from "node:test";
-import { resolveRoots } from "../../src/roots.ts";
-import type { RootConfig } from "../../src/types.ts";
+import { resolveRoots } from "../../src/core/roots.ts";
+import type { RootConfig } from "../../src/core/types.ts";
 import { withTempDir } from "../helpers/fixtures.ts";
 
 function root(overrides: Partial<RootConfig> = {}): RootConfig {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseFixtures, runBench } from "../../src/bench.ts";
-import { DEFAULT_CONFIG } from "../../src/config.ts";
+import { parseFixtures, runBench } from "../../src/core/bench.ts";
+import { DEFAULT_CONFIG } from "../../src/core/config.ts";
 import { catalogOf, makeEntry } from "../helpers/fixtures.ts";
 
 test("parseFixtures validates the shape", () => {

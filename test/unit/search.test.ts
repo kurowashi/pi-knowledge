@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { capSearchText, scoreEntry, searchCatalog, tokenize } from "../../src/search.ts";
+import { capSearchText, scoreEntry, searchCatalog, tokenize } from "../../src/core/search.ts";
 import { catalogOf, makeEntry } from "../helpers/fixtures.ts";
 
 function options(overrides: Partial<Parameters<typeof searchCatalog>[1]> = {}) {

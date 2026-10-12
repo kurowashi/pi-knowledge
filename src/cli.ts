@@ -9,18 +9,18 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { backendArg, loadFixtures, repeatArg, runBench } from "./bench.ts";
-import { buildCatalog } from "./catalog.ts";
-import { type KnowledgeConfig, loadConfig } from "./config.ts";
-import { runDocs } from "./docs.ts";
-import { formatCatalog, formatIssues, formatSearchHits, formatTagCounts } from "./format.ts";
-import { lintCatalog } from "./lint.ts";
-import { findReferences, formatReferences } from "./refs.ts";
-import { resolveRoots } from "./roots.ts";
-import { SearchService } from "./search_service.ts";
-import { findDuplicatePairs, formatDuplicatePairs } from "./similar.ts";
-import { formatStale, staleReport } from "./stale.ts";
-import type { Backend, CatalogData, ResolvedRoot, Scope, Status } from "./types.ts";
+import { backendArg, loadFixtures, repeatArg, runBench } from "./core/bench.ts";
+import { buildCatalog } from "./core/catalog.ts";
+import { type KnowledgeConfig, loadConfig, SHARED_HOST_PATHS } from "./core/config.ts";
+import { runDocs } from "./core/docs.ts";
+import { formatCatalog, formatIssues, formatSearchHits, formatTagCounts } from "./core/format.ts";
+import { lintCatalog } from "./core/lint.ts";
+import { findReferences, formatReferences } from "./core/refs.ts";
+import { resolveRoots } from "./core/roots.ts";
+import { SearchService } from "./core/search_service.ts";
+import { findDuplicatePairs, formatDuplicatePairs } from "./core/similar.ts";
+import { formatStale, staleReport } from "./core/stale.ts";
+import type { Backend, CatalogData, ResolvedRoot, Scope, Status } from "./core/types.ts";
 
 export interface CliResult {
 	code: number;
@@ -179,8 +179,8 @@ async function runSearch(
 	return { code, stdout, stderr: appendNote(stderr, notes) };
 }
 
-function runLint(catalog: CatalogData, roots: ResolvedRoot[], cwd: string, stderr: string): CliResult {
-	const issues = lintCatalog(catalog, roots, cwd, new Date());
+function runLint(catalog: CatalogData, roots: ResolvedRoot[], stderr: string): CliResult {
+	const issues = lintCatalog(catalog, roots, new Date());
 	return { code: issues.some((issue) => issue.level === "error") ? 1 : 0, stdout: formatIssues(issues), stderr };
 }
 
@@ -233,18 +233,22 @@ async function runBenchCommand(
 
 export async function execute(argv: string[], cwd: string): Promise<CliResult> {
 	const [action = "list", ...rest] = argv;
-	const loaded = loadConfig(cwd, true);
+	const loaded = loadConfig(cwd, true, SHARED_HOST_PATHS);
 	const warnings = [...loaded.warnings];
 	const roots = resolveRoots(cwd, loaded.config.roots, warnings);
 	const catalog = buildCatalog(roots, warnings);
 	const stderr = warnings.map((warning) => `kb: ${warning}`).join("\n");
-	const service = new SearchService(catalog, loaded.config, { cwd, enabled: loaded.config.cache.enabled });
+	const service = new SearchService(catalog, loaded.config, {
+		cwd,
+		enabled: loaded.config.cache.enabled,
+		cacheDirName: SHARED_HOST_PATHS.cacheDirName,
+	});
 	const runners: Record<string, () => CliResult | Promise<CliResult>> = {
 		list: () => runList(rest, catalog, roots, stderr),
 		tags: () => ({ code: 0, stdout: formatTagCounts(catalog), stderr }),
 		find: () => runFind(rest, catalog, roots, stderr),
 		search: () => runSearch(rest, roots, loaded.config, service, stderr),
-		lint: () => runLint(catalog, roots, cwd, stderr),
+		lint: () => runLint(catalog, roots, stderr),
 		stale: () => runStale(catalog, loaded.config, cwd, stderr),
 		dups: () => runDups(rest, catalog, stderr),
 		refs: () => runRefs(rest, catalog, stderr),

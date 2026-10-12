@@ -1,7 +1,10 @@
 /**
- * Validation: errors block writes (unless `write.enforce: "warn"`), warnings
- * are reported but allowed. The same rules feed the write hooks, `/kb lint`,
- * the CLI, and session-start reporting.
+ * Validation. Errors mark an entry unusable (excluded from the catalog, search,
+ * and injection); warnings are reported and allowed.
+ *
+ * The same rules feed the post-write notices, `/kb lint`, and the CLI. Writes
+ * are never blocked on content (DESIGN.md §7): the only refused operation is a
+ * `write` onto an existing entry path.
  */
 
 import * as fs from "node:fs";
@@ -59,13 +62,25 @@ function fieldIssues(entry: EntryRecord): Issue[] {
 	return issues;
 }
 
-function referenceIssues(
-	entry: EntryRecord,
-	catalog: CatalogData,
-	roots: ResolvedRoot[],
-	repoRoot: string,
-	today: string,
-): Issue[] {
+function sourceIssues(entry: EntryRecord): Issue[] {
+	const source = entry.source;
+	if (source === null || source.includes("://")) return [];
+	// A path inside the repository means the entry records this project's own
+	// design, which DESIGN.md §11.5 forbids: it is readable in code and breaks
+	// on every design change.
+	if (!path.isAbsolute(source)) {
+		return [
+			warn(
+				entry,
+				`source points inside this repository (${source}); record external behavior, not this project's own design (DESIGN.md §11.5)`,
+			),
+		];
+	}
+	if (!fs.existsSync(source)) return [warn(entry, `source path not found: ${source}`)];
+	return [];
+}
+
+function referenceIssues(entry: EntryRecord, catalog: CatalogData, roots: ResolvedRoot[], today: string): Issue[] {
 	const issues: Issue[] = [];
 	for (const link of extractLinks(entry.body)) {
 		if (!resolveId(link, catalog, roots)) issues.push(warn(entry, `link [[${link}]] has no target`));
@@ -73,9 +88,7 @@ function referenceIssues(
 	if (entry.supersedes !== null && !resolveId(entry.supersedes, catalog, roots)) {
 		issues.push(warn(entry, `supersedes target ${entry.supersedes} not found`));
 	}
-	if (entry.source !== null && !entry.source.includes("://") && !fs.existsSync(path.resolve(repoRoot, entry.source))) {
-		issues.push(warn(entry, `source path not found: ${entry.source}`));
-	}
+	issues.push(...sourceIssues(entry));
 	if (entry.reviewAfter !== null && entry.reviewAfter < today) {
 		issues.push(warn(entry, `review_after ${entry.reviewAfter} has passed`));
 	}
@@ -83,14 +96,8 @@ function referenceIssues(
 }
 
 /** Warnings for one parsed entry. Type errors were already excluded at parse time. */
-export function validateEntry(
-	entry: EntryRecord,
-	catalog: CatalogData,
-	roots: ResolvedRoot[],
-	repoRoot: string,
-	now: Date,
-): Issue[] {
-	return [...fieldIssues(entry), ...referenceIssues(entry, catalog, roots, repoRoot, now.toISOString().slice(0, 10))];
+export function validateEntry(entry: EntryRecord, catalog: CatalogData, roots: ResolvedRoot[], now: Date): Issue[] {
+	return [...fieldIssues(entry), ...referenceIssues(entry, catalog, roots, now.toISOString().slice(0, 10))];
 }
 
 function invalidIssues(catalog: CatalogData): Issue[] {
@@ -153,8 +160,8 @@ function nestedIssues(roots: ResolvedRoot[]): Issue[] {
 	return roots.flatMap((root) => nestedMarkdown(root));
 }
 
-export function lintCatalog(catalog: CatalogData, roots: ResolvedRoot[], repoRoot: string, now: Date): Issue[] {
-	const entryIssues = catalog.entries.flatMap((entry) => validateEntry(entry, catalog, roots, repoRoot, now));
+export function lintCatalog(catalog: CatalogData, roots: ResolvedRoot[], now: Date): Issue[] {
+	const entryIssues = catalog.entries.flatMap((entry) => validateEntry(entry, catalog, roots, now));
 	return [
 		...invalidIssues(catalog),
 		...collisionIssues(catalog),

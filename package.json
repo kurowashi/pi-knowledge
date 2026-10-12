@@ -1,32 +1,58 @@
 {
 	"name": "pi-knowledge",
 	"version": "0.1.0",
-	"description": "Project knowledge for Pi: a token-budgeted index, validated Markdown entries, and a CI-ready CLI",
-	"keywords": ["pi-package", "pi", "knowledge", "memory", "markdown", "context"],
+	"description": "Project knowledge for Pi and OpenCode: a token-budgeted index, validated Markdown entries, and a CI-ready CLI",
+	"keywords": [
+		"pi-package",
+		"pi",
+		"knowledge",
+		"memory",
+		"markdown",
+		"context"
+	],
 	"license": "MIT",
 	"type": "module",
 	"engines": {
 		"node": ">=22.19.0"
 	},
 	"pi": {
-		"extensions": ["./src/index.ts"],
-		"skills": ["./skills"]
+		"extensions": [
+			"./src/hosts/pi.ts"
+		],
+		"skills": [
+			"./skills"
+		]
 	},
-	"files": ["src", "skills"],
+	"exports": {
+		"./server": "./src/hosts/opencode.ts"
+	},
+	"files": [
+		"src",
+		"skills"
+	],
 	"bin": {
 		"kb": "./src/cli.ts"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": "*",
+		"@opencode/plugin": "*",
 		"typebox": "*"
 	},
 	"peerDependenciesMeta": {
-		"@earendil-works/pi-coding-agent": { "optional": true },
-		"typebox": { "optional": true }
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		},
+		"@opencode/plugin": {
+			"optional": true
+		},
+		"typebox": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
 		"@earendil-works/pi-coding-agent": "0.87.1",
+		"@opencode/plugin": "2.0.27",
 		"@types/node": "^24.0.0",
 		"knip": "6.39.0",
 		"lefthook": "2.1.14",

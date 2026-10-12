@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import test from "node:test";
-import { DEFAULT_CONFIG } from "../../src/config.ts";
-import { buildDocumentIndex, globToRegExp, runDocs } from "../../src/docs.ts";
+import { DEFAULT_CONFIG } from "../../src/core/config.ts";
+import { buildDocumentIndex, globToRegExp, runDocs } from "../../src/core/docs.ts";
 import { withTempDir } from "../helpers/fixtures.ts";
 
 function config(overrides: Partial<typeof DEFAULT_CONFIG.docs> = {}) {

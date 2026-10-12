@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { estimateTokens } from "../../src/tokens.ts";
+import { estimateTokens } from "../../src/core/tokens.ts";
 
 test("estimates are conservative per character class", () => {
 	assert.equal(estimateTokens(""), 0);

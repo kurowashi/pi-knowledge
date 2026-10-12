@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseFrontmatter } from "../../src/frontmatter.ts";
+import { parseFrontmatter } from "../../src/core/frontmatter.ts";
 
 test("no frontmatter returns the body unchanged", () => {
 	const result = parseFrontmatter("plain text");

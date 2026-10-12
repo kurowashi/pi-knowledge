@@ -11,3 +11,4 @@ node_modules/
 # Logs and OS noise
 *.log
 .DS_Store
+MEMORY-ARCHITECTURE.md

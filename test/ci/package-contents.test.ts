@@ -4,15 +4,23 @@ import * as path from "node:path";
 import test from "node:test";
 import { PACKAGE_ROOT } from "../helpers/paths.ts";
 
-function packageJson(): Record<string, unknown> {
-	return JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8")) as Record<string, unknown>;
+interface Exports {
+	[key: string]: string;
+}
+
+interface PackageJson {
+	[key: string]: unknown;
+}
+
+function packageJson(): PackageJson {
+	return JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8")) as PackageJson;
 }
 
 test("the distribution stays inside the files whitelist", () => {
 	const pkg = packageJson();
 	assert.deepEqual((pkg["files"] as string[]).sort(), ["skills", "src"]);
-	const extensions = pkg["pi"] as { extensions: string[] };
-	for (const entry of extensions.extensions) assert.ok(entry.startsWith("./src/"), entry);
+	const pi = pkg["pi"] as { extensions: string[] };
+	for (const entry of pi.extensions) assert.ok(entry.startsWith("./src/"), entry);
 });
 
 test("no build step and the entry points exist", () => {
@@ -21,8 +29,17 @@ test("no build step and the entry points exist", () => {
 	assert.equal(scripts["build"], undefined);
 	const bin = pkg["bin"] as Record<string, string>;
 	assert.ok(fs.existsSync(path.join(PACKAGE_ROOT, bin["kb"] ?? "")));
-	const extensions = (pkg["pi"] as { extensions: string[] }).extensions;
-	for (const entry of extensions) assert.ok(fs.existsSync(path.join(PACKAGE_ROOT, entry)));
+	const pi = pkg["pi"] as { extensions: string[] };
+	for (const entry of pi.extensions) assert.ok(fs.existsSync(path.join(PACKAGE_ROOT, entry)));
+});
+
+test("Pi and OpenCode load the same package through different entry points", () => {
+	const pkg = packageJson();
+	const exports = pkg["exports"] as Exports;
+	assert.equal(exports["./server"], "./src/hosts/opencode.ts", "OpenCode resolves <package>/server");
+	for (const entry of Object.values(exports)) {
+		assert.ok(fs.existsSync(path.join(PACKAGE_ROOT, entry)), `${entry} must exist`);
+	}
 });
 
 test("the curation skill ships with the package", () => {
