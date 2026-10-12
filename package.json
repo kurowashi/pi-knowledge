@@ -24,9 +24,10 @@
 		]
 	},
 	"exports": {
-		"./server": "./src/hosts/opencode.ts"
+		"./server": "./server.ts"
 	},
 	"files": [
+		"server.ts",
 		"src",
 		"skills"
 	],

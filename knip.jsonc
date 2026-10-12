@@ -1,5 +1,8 @@
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	// lefthook runs from git hooks, which knip only recognizes when hooks are installed.
-	"ignoreDependencies": ["lefthook"]
+	"ignoreDependencies": ["lefthook"],
+	// server.ts is OpenCode's directory-plugin entrypoint: resolved at runtime as
+	// `<dir>/server`, never imported by the package itself.
+	"entry": ["server.ts"]
 }

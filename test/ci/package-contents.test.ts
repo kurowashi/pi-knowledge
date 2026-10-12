@@ -18,7 +18,7 @@ function packageJson(): PackageJson {
 
 test("the distribution stays inside the files whitelist", () => {
 	const pkg = packageJson();
-	assert.deepEqual((pkg["files"] as string[]).sort(), ["skills", "src"]);
+	assert.deepEqual((pkg["files"] as string[]).sort(), ["server.ts", "skills", "src"]);
 	const pi = pkg["pi"] as { extensions: string[] };
 	for (const entry of pi.extensions) assert.ok(entry.startsWith("./src/"), entry);
 });
@@ -33,13 +33,29 @@ test("no build step and the entry points exist", () => {
 	for (const entry of pi.extensions) assert.ok(fs.existsSync(path.join(PACKAGE_ROOT, entry)));
 });
 
+test("the OpenCode directory form resolves through server.ts at the package root", () => {
+	const pkg = packageJson();
+	// A configured local plugin path must be a directory (OpenCode rejects a
+	// file), and OpenCode resolves it as `<dir>/server`. The root server.ts is
+	// the entry for that form and for the exports map, so both agree by construction.
+	assert.deepEqual((pkg["files"] as string[]).sort(), ["server.ts", "skills", "src"]);
+	const exports = pkg["exports"] as Exports;
+	assert.equal(exports["./server"], "./server.ts");
+	const text = fs.readFileSync(path.join(PACKAGE_ROOT, "server.ts"), "utf8");
+	assert.match(
+		text,
+		/export \{ default \} from "\.\/src\/hosts\/opencode\.ts"/,
+		"server.ts must re-export the adapter",
+	);
+});
+
 test("Pi and OpenCode load the same package through different entry points", () => {
 	const pkg = packageJson();
 	const exports = pkg["exports"] as Exports;
 	const pi = pkg["pi"] as { extensions: string[] };
 	// OpenCode resolves `<package>/server` first (Host.resolve), Pi reads `pi.extensions`.
 	assert.deepEqual(Object.keys(exports), ["./server"]);
-	assert.equal(exports["./server"], "./src/hosts/opencode.ts");
+	assert.equal(exports["./server"], "./server.ts");
 	assert.equal(pi.extensions.length, 1);
 	for (const entry of [...Object.values(exports), ...pi.extensions]) {
 		assert.ok(fs.existsSync(path.join(PACKAGE_ROOT, entry)), `${entry} must exist`);

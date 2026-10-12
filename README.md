@@ -24,25 +24,19 @@ pi install npm:pi-knowledge
 
 ### OpenCode
 
-Installed package:
+A source checkout is configured by directory; OpenCode resolves it as `<dir>/server` (the root `server.ts` re-exports the adapter):
 
 ```jsonc title="opencode.jsonc"
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["pi-knowledge"],
-  "skills": ["pi-knowledge/skills"],
-}
-```
-
-OpenCode resolves a package plugin through its `exports` map, and this package publishes `./server` → `src/hosts/opencode.ts`. A source checkout is loaded by pointing at the file:
-
-```jsonc title="opencode.jsonc"
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": ["./pi-knowledge/src/hosts/opencode.ts"],
+  "plugins": ["./pi-knowledge"],
   "skills": ["./pi-knowledge/skills"],
 }
 ```
+
+A configured plugin path must be a directory; a file path is rejected with `configured plugin path must be a directory`.
+
+An installed package resolves through its `exports` map (`./server` → `src/hosts/opencode.ts`) the same way. **Do not reference this package by the bare name `pi-knowledge` on npm**: that name belongs to an unrelated package, and configuring it installs that one instead.
 
 Host differences are documented in [DESIGN.md §15](DESIGN.md#15-統合面host):
 

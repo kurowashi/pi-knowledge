@@ -603,7 +603,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 
 ### 15.1 機能の写像
 
-| 機能 | Pi(`src/hosts/pi.ts`) | OpenCode(`src/hosts/opencode.ts`) |
+| 機能 | Pi(`src/hosts/pi.ts`) | OpenCode(`server.ts` → `src/hosts/opencode.ts`) |
 |---|---|---|
 | catalog 構築 | `session_start` | プラグイン `setup`(location 単位) |
 | index 注入 | `before_agent_start` の `sections.knowledge_index` | `session` hook `context` で `system` に追記 |
