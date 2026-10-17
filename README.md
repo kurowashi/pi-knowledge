@@ -16,6 +16,45 @@ CI
   └ kb lint で形式エラー・参照切れ・陳腐化を検出
 ```
 
+## インストール
+
+### Pi
+
+```bash
+pi install git:github.com/kurowashi/pi-knowledge
+```
+
+ref を固定する場合は `pi install git:github.com/kurowashi/pi-knowledge@<tag|commit>` を使います。
+
+ローカルの作業コピーを使う場合は `pi install /path/to/pi-knowledge` を使います。
+
+> [!WARNING]
+> npm の `pi-knowledge` は別のパッケージです。`pi install npm:pi-knowledge` では、このプラグインは入りません。
+
+### OpenCode
+
+ローカルの作業コピーのディレクトリを指定します。
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["./pi-knowledge"],
+  "skills": ["./pi-knowledge/skills"]
+}
+```
+
+`plugins` に npm の `pi-knowledge` を指定しないでください。別のパッケージが入ります。
+
+### CLI（`kb`）
+
+CI では、作業コピーの `src/cli.ts` を Node で直接実行します。ビルドは不要で、Node 22.19 以上が必要です。
+
+```bash
+node path/to/pi-knowledge/src/cli.ts lint
+```
+
+以下のコマンド例では、この実行を `kb` と書きます。
+
 ## 使い方
 
 ### 知識を書く
@@ -58,45 +97,6 @@ Conditions: the response comes from a third-party service.
 - `/knowledge lint` で形式エラーと警告を確認します。
 - `/knowledge review [focus]` で、重複・陳腐化・未参照のエントリをエージェントに渡します。エージェントは `write` / `edit` で整理します。プラグインはエントリを書きません。
 - `/knowledge stale`、`/knowledge dups`、`/knowledge refs <id>` で、個別の観点から確認できます。
-
-## インストール
-
-### Pi
-
-```bash
-pi install git:github.com/kurowashi/pi-knowledge
-```
-
-ref を固定する場合は `pi install git:github.com/kurowashi/pi-knowledge@<tag|commit>` を使います。
-
-ローカルの作業コピーを使う場合は `pi install /path/to/pi-knowledge` を使います。
-
-> [!WARNING]
-> npm の `pi-knowledge` は別のパッケージです。`pi install npm:pi-knowledge` では、このプラグインは入りません。
-
-### OpenCode
-
-ローカルの作業コピーのディレクトリを指定します。
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": ["./pi-knowledge"],
-  "skills": ["./pi-knowledge/skills"]
-}
-```
-
-`plugins` に npm の `pi-knowledge` を指定しないでください。別のパッケージが入ります。
-
-### CLI（`kb`）
-
-CI では、作業コピーの `src/cli.ts` を Node で直接実行します。ビルドは不要で、Node 22.19 以上が必要です。
-
-```bash
-node path/to/pi-knowledge/src/cli.ts lint
-```
-
-以下のコマンド例では、この実行を `kb` と書きます。
 
 ## 設定
 
@@ -153,6 +153,44 @@ node path/to/pi-knowledge/src/cli.ts lint
 ### embedding
 
 `search.backend` が `embedding` または `hybrid` のときだけ、エントリ本文と検索クエリを `search.embedding.endpoint` へ送信します。既定ではネットワークを使いません。
+
+## コマンド
+
+Pi と OpenCode のスラッシュコマンドは `/knowledge` です。以前の `/kb` は廃止したため、使えません。シェルから使う CLI は `kb` のままです。
+
+### `/knowledge`
+
+| コマンド | 内容 |
+|---|---|
+| `/knowledge status` | 有効状態、有効な root、索引の段階と推定トークン数、lint の件数、検索方式を表示します。引数がない場合の既定です。 |
+| `/knowledge config` | 既定値を適用した後の設定を JSON で表示します。 |
+| `/knowledge lint` | lint の結果を表示します。 |
+| `/knowledge list` | `active` のエントリを一覧します。 |
+| `/knowledge tags` | タグと件数を表示します。 |
+| `/knowledge find <tag>...` | 全タグを持つ `active` のエントリを表示します。 |
+| `/knowledge search <query>` | 設定の検索方式で検索します。 |
+| `/knowledge stale` | 陳腐化の候補を表示します。 |
+| `/knowledge dups` | 内容が似たエントリの組を表示します。 |
+| `/knowledge refs <id>` | そのエントリを参照しているエントリを表示します。 |
+| `/knowledge review [focus]` | 整理の候補をエージェントに渡します。 |
+| `/knowledge docs` | 文書索引を生成します。 |
+| `/knowledge bench <fixture.json>` | 検索方式ごとの再現率と速度を計測します。 |
+| `/knowledge capture [focus]` | このセッションで得た知識を、エージェントに記録させます。`capture.mode` が `manual` のときだけ動きます。 |
+
+### `kb`（CLI）
+
+| コマンド | 内容 | 終了コード |
+|---|---|---|
+| `kb list [--all]` | エントリを一覧します。`--all` は `active` 以外も含めます。 | 0 |
+| `kb tags` | タグと件数を表示します。 | 0 |
+| `kb find <tag>...` | 全タグを持つエントリを表示します。 | 一致 0 件で 1 |
+| `kb search <query> [--json] [--limit N] [--status S] [--scope S] [--backend B] [--require-backend]` | 検索します。`--require-backend` は、指定した方式が使えなければ終了コード 3 にします。 | 3 は `--require-backend` で方式が使えないとき |
+| `kb lint` | エラーと警告を表示します。 | エラーありで 1 |
+| `kb stale` | 陳腐化の候補を表示します。 | 0 |
+| `kb refs <id>` | 参照しているエントリを表示します。 | 0 |
+| `kb dups [--max N]` | 内容が似たエントリの組を表示します。 | 組が N を超えると 1。N が 0 以上の整数でないと 2 |
+| `kb docs [--check]` | 文書索引を生成します。`--check` は生成せず、差分を確認します。 | 差分ありで 1。読み書きの失敗で 2 |
+| `kb bench <fixture.json> [--repeat N] [--backend B]` | 検索方式ごとに計測し、JSON で表示します。 | 0 |
 
 ## 仕組み
 
@@ -262,44 +300,6 @@ frontmatter は、プレーンな値・引用符付き文字列・インライ�
 
 `kb docs` は、`docs.include` に一致するファイルの一覧を `docs.path`（既定は `docs/INDEX.md`）に書きます。1 行は `<パス> — <最初の見出し>` です。索引には注入されず、`read` で見つけるためのものです。`kb docs --check` は、索引が存在しないとき、または現在の内容と違うときに終了コード 1 を返します。
 
-## コマンド
-
-Pi と OpenCode のスラッシュコマンドは `/knowledge` です。以前の `/kb` は廃止したため、使えません。シェルから使う CLI は `kb` のままです。
-
-### `/knowledge`
-
-| コマンド | 内容 |
-|---|---|
-| `/knowledge status` | 有効状態、有効な root、索引の段階と推定トークン数、lint の件数、検索方式を表示します。引数がない場合の既定です。 |
-| `/knowledge config` | 既定値を適用した後の設定を JSON で表示します。 |
-| `/knowledge lint` | lint の結果を表示します。 |
-| `/knowledge list` | `active` のエントリを一覧します。 |
-| `/knowledge tags` | タグと件数を表示します。 |
-| `/knowledge find <tag>...` | 全タグを持つ `active` のエントリを表示します。 |
-| `/knowledge search <query>` | 設定の検索方式で検索します。 |
-| `/knowledge stale` | 陳腐化の候補を表示します。 |
-| `/knowledge dups` | 内容が似たエントリの組を表示します。 |
-| `/knowledge refs <id>` | そのエントリを参照しているエントリを表示します。 |
-| `/knowledge review [focus]` | 整理の候補をエージェントに渡します。 |
-| `/knowledge docs` | 文書索引を生成します。 |
-| `/knowledge bench <fixture.json>` | 検索方式ごとの再現率と速度を計測します。 |
-| `/knowledge capture [focus]` | このセッションで得た知識を、エージェントに記録させます。`capture.mode` が `manual` のときだけ動きます。 |
-
-### `kb`（CLI）
-
-| コマンド | 内容 | 終了コード |
-|---|---|---|
-| `kb list [--all]` | エントリを一覧します。`--all` は `active` 以外も含めます。 | 0 |
-| `kb tags` | タグと件数を表示します。 | 0 |
-| `kb find <tag>...` | 全タグを持つエントリを表示します。 | 一致 0 件で 1 |
-| `kb search <query> [--json] [--limit N] [--status S] [--scope S] [--backend B] [--require-backend]` | 検索します。`--require-backend` は、指定した方式が使えなければ終了コード 3 にします。 | 3 は `--require-backend` で方式が使えないとき |
-| `kb lint` | エラーと警告を表示します。 | エラーありで 1 |
-| `kb stale` | 陳腐化の候補を表示します。 | 0 |
-| `kb refs <id>` | 参照しているエントリを表示します。 | 0 |
-| `kb dups [--max N]` | 内容が似たエントリの組を表示します。 | 組が N を超えると 1。N が 0 以上の整数でないと 2 |
-| `kb docs [--check]` | 文書索引を生成します。`--check` は生成せず、差分を確認します。 | 差分ありで 1。読み書きの失敗で 2 |
-| `kb bench <fixture.json> [--repeat N] [--backend B]` | 検索方式ごとに計測し、JSON で表示します。 | 0 |
-
 ## 制限
 
 - 書き込みの検証は `write` と `edit` にだけ働きます。`patch` は検証しません。`patch` で既存のエントリを変えると、拒否されません。
@@ -310,3 +310,7 @@ Pi と OpenCode のスラッシュコマンドは `/knowledge` です。以前�
 - `recall` のヒントは保存されません。セッションを再開すると、再び注入されることがあります。
 - OpenCode には、画面に出る通知がありません。警告は会話とツール結果に出ます。
 - 開発と検証に使う Pi は 0.87.1、`@opencode/plugin` は 2.0.27 です。これ以外のバージョンでの動作は保証しません。
+
+## ライセンス
+
+[MIT](LICENSE)
