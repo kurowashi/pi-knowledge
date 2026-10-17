@@ -34,9 +34,9 @@ test("the only model-facing tool is kb_search", async () => {
 	assert.deepEqual([...extension.tools.keys()], ["kb_search"]);
 });
 
-test("the only command is /kb", async () => {
+test("the only command is /knowledge", async () => {
 	const extension = await loadKnowledgeExtension();
-	assert.deepEqual([...extension.commands.keys()], ["kb"]);
+	assert.deepEqual([...extension.commands.keys()], ["knowledge"]);
 });
 
 test("each documented event has exactly one handler", async () => {
@@ -99,7 +99,7 @@ test("the OpenCode host exposes the same one tool and one command", async () => 
 	try {
 		const host = await loadOpencodePlugin(cwd);
 		assert.deepEqual([...host.tools.keys()], ["kb_search"]);
-		assert.deepEqual([...host.commands.keys()], ["kb"]);
+		assert.deepEqual([...host.commands.keys()], ["knowledge"]);
 	} finally {
 		cleanup(cwd);
 	}

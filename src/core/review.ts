@@ -1,5 +1,5 @@
 /**
- * `/kb review` candidate generation (DESIGN.md §11.4).
+ * `/knowledge review` candidate generation (DESIGN.md §11.4).
  *
  * The plugin hands candidates to the model and never rewrites an entry. It also
  * never asks a model to score anything: value and contradiction are judgments,

@@ -69,7 +69,7 @@ export function parseFixtures(value: unknown): BenchFixture[] | null {
 
 export type FixtureLoad = { fixtures: BenchFixture[] } | { error: string };
 
-/** Read and validate a fixture file; shared by the CLI and `/kb bench`. */
+/** Read and validate a fixture file; shared by the CLI and `/knowledge bench`. */
 export function loadFixtures(cwd: string, fixturePath: string): FixtureLoad {
 	let parsed: unknown;
 	try {

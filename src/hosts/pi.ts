@@ -13,7 +13,7 @@
  *   on a readonly root (DESIGN.md §7.1).
  * - `tool_result`: refresh the catalog and append lint notes for what changed.
  *
- * The model-facing surface is `kb_search` plus the `/kb` command. No write tools
+ * The model-facing surface is `kb_search` plus the `/knowledge` command. No write tools
  * are added (DESIGN.md §14).
  */
 
@@ -126,7 +126,7 @@ export default function knowledgeExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("kb", {
+	pi.registerCommand("knowledge", {
 		description:
 			"pi-knowledge: status | config | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
 		handler: async (args, ctx) => {

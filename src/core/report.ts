@@ -1,5 +1,5 @@
 /**
- * `/kb` subcommand output. Shared logic lives here so every host adapter and
+ * `/knowledge` subcommand output. Shared logic lives here so every host adapter and
  * the CLI render the same text.
  */
 
@@ -45,7 +45,7 @@ export async function commandReport(action: string, rest: string[], ctx: ReportC
 		dups: () => formatDuplicatePairs(findDuplicatePairs(catalog)) || "no duplicates",
 		refs: () => {
 			const id = rest[0];
-			if (id === undefined) return "usage: /kb refs <id>";
+			if (id === undefined) return "usage: /knowledge refs <id>";
 			return formatReferences(findReferences(catalog, id), id) || "no references";
 		},
 		docs: () => {
@@ -54,7 +54,7 @@ export async function commandReport(action: string, rest: string[], ctx: ReportC
 		},
 		bench: async () => {
 			const fixturePath = rest.find((arg) => !arg.startsWith("--"));
-			if (fixturePath === undefined) return "usage: /kb bench <fixture.json> [--repeat N]";
+			if (fixturePath === undefined) return "usage: /knowledge bench <fixture.json> [--repeat N]";
 			const loaded = loadFixtures(ctx.cwd, fixturePath);
 			if ("error" in loaded) return `kb bench: ${loaded.error}`;
 			const requested = backendArg(rest);

@@ -2,7 +2,7 @@
  * Validation. Errors mark an entry unusable (excluded from the catalog, search,
  * and injection); warnings are reported and allowed.
  *
- * The same rules feed the post-write notices, `/kb lint`, and the CLI. Writes
+ * The same rules feed the post-write notices, `/knowledge lint`, and the CLI. Writes
  * are never blocked on content (DESIGN.md §7): the only refused operation is a
  * `write` onto an existing entry path.
  */

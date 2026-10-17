@@ -51,13 +51,13 @@ Conditions: the response comes from a third-party service.
 
 - エージェントは、セッション開始時の索引で既存エントリの存在を知ります。
 - 索引には本文が含まれません。本文は、索引の id と Roots 行から `knowledge/<id>.md` を求めて `read` で読みます。`kb_search` の結果にも `path` が含まれます。
-- 人は `/kb search <query>`、`/kb find <tag>...`、`/kb list` で探せます。
+- 人は `/knowledge search <query>`、`/knowledge find <tag>...`、`/knowledge list` で探せます。
 
 ### 知識を整理する
 
-- `/kb lint` で形式エラーと警告を確認します。
-- `/kb review [focus]` で、重複・陳腐化・未参照のエントリをエージェントに渡します。エージェントは `write` / `edit` で整理します。プラグインはエントリを書きません。
-- `/kb stale`、`/kb dups`、`/kb refs <id>` で、個別の観点から確認できます。
+- `/knowledge lint` で形式エラーと警告を確認します。
+- `/knowledge review [focus]` で、重複・陳腐化・未参照のエントリをエージェントに渡します。エージェントは `write` / `edit` で整理します。プラグインはエントリを書きません。
+- `/knowledge stale`、`/knowledge dups`、`/knowledge refs <id>` で、個別の観点から確認できます。
 
 ## インストール
 
@@ -116,7 +116,7 @@ node path/to/pi-knowledge/src/cli.ts lint
 
 | キー | 既定 | 内容 |
 |---|---|---|
-| `enabled` | `true` | `false` で全機能を止めます。`/kb status` だけが残ります。 |
+| `enabled` | `true` | `false` で全機能を止めます。`/knowledge status` だけが残ります。 |
 | `roots` | `knowledge` を project root として 1 つ | 知識を置くディレクトリです。`roots` が未指定で `knowledge/` もなければ、何もしません。 |
 | `injection.enabled` | `true` | 索引を注入します。 |
 | `injection.maxTokens` | `4000` | 索引の上限トークン数です。 |
@@ -126,7 +126,7 @@ node path/to/pi-knowledge/src/cli.ts lint
 | `search.embedding.endpoint` / `model` / `apiKeyEnv` / `timeoutMs` | 空 / 空 / 空 / `5000` | embedding の接続先です。`apiKeyEnv` には API キーを入れた環境変数名を書きます。 |
 | `write.enforce` | `block` | 既存エントリへの `write` の扱いです。[書き込みの検証](#書き込みの検証)を参照してください。 |
 | `recall.mode` | `off` | `hint` にすると、プロンプトに関連するエントリの id を、そのターンに追加します。同じセッションで一度追加した id は、再び追加しません。 |
-| `capture.mode` | `manual` | `off` にすると `/kb capture` を無効にします。 |
+| `capture.mode` | `manual` | `off` にすると `/knowledge capture` を無効にします。 |
 | `docs.path` / `include` / `exclude` / `maxLines` | `docs/INDEX.md` / `["docs/**"]` / `[]` / `500` | `kb docs` の出力先と対象です。 |
 | `stale.days` | `365` | Git の最終更新日がこの日数を超えたエントリを陳腐化候補にします。 |
 | `cache.enabled` | `true` | 検索インデックスをキャッシュします。 |
@@ -182,7 +182,7 @@ frontmatter は、プレーンな値・引用符付き文字列・インライ�
 - セッション開始時と、compaction が成功した後に生成します。
 - 1 件のエントリにつき 1 行で、`id  title — when` の形式です。
 - 索引には本文を含めません。
-- 上限を超える場合は、`title` を短くし、それでも超える場合は件数とタグだけにします。固定費だけで上限を超える場合は、固定文と Roots 行だけを注入し、`/kb status` に `over fixed budget` と表示します。
+- 上限を超える場合は、`title` を短くし、それでも超える場合は件数とタグだけにします。固定費だけで上限を超える場合は、固定文と Roots 行だけを注入し、`/knowledge status` に `over fixed budget` と表示します。
 - 実効上限は `min(maxTokens, max(floorTokens, 文脈窓 × contextFraction))` です。文脈窓が 200k なら 4000、100k なら 2000、32k なら 1000 トークンになります。
 - 会話の途中で作ったエントリは、`kb_search` で見つかります。索引に載るのは次のセッションか、次の compaction の後です。Pi では、compaction 後の索引は次の実行の開始時に反映されます。
 
@@ -230,7 +230,7 @@ frontmatter は、プレーンな値・引用符付き文字列・インライ�
 
 ### lint
 
-`kb lint` と `/kb lint` は、次の内容を確認します。
+`kb lint` と `/knowledge lint` は、次の内容を確認します。
 
 - エラー（エントリから外れます）
   - frontmatter がない、閉じていない、または解析できない
@@ -251,7 +251,7 @@ frontmatter は、プレーンな値・引用符付き文字列・インライ�
 
 ### 整理
 
-- `/kb review [focus]` は、次の候補をエージェントに渡します。
+- `/knowledge review [focus]` は、次の候補をエージェントに渡します。
   - 重複（最大 5 組）
   - 陳腐化（`review_after` が過ぎたもの、または Git の最終更新から `stale.days` を超えたもの。最大 10 件）
   - 未参照（`[[id]]` と `supersedes` のどちらからも参照されない `active` のもの。最大 10 件）
@@ -264,24 +264,26 @@ frontmatter は、プレーンな値・引用符付き文字列・インライ�
 
 ## コマンド
 
-### `/kb`
+Pi と OpenCode のスラッシュコマンドは `/knowledge` です。以前の `/kb` は廃止したため、使えません。シェルから使う CLI は `kb` のままです。
+
+### `/knowledge`
 
 | コマンド | 内容 |
 |---|---|
-| `/kb status` | 有効状態、有効な root、索引の段階と推定トークン数、lint の件数、検索方式を表示します。引数がない場合の既定です。 |
-| `/kb config` | 既定値を適用した後の設定を JSON で表示します。 |
-| `/kb lint` | lint の結果を表示します。 |
-| `/kb list` | `active` のエントリを一覧します。 |
-| `/kb tags` | タグと件数を表示します。 |
-| `/kb find <tag>...` | 全タグを持つ `active` のエントリを表示します。 |
-| `/kb search <query>` | 設定の検索方式で検索します。 |
-| `/kb stale` | 陳腐化の候補を表示します。 |
-| `/kb dups` | 内容が似たエントリの組を表示します。 |
-| `/kb refs <id>` | そのエントリを参照しているエントリを表示します。 |
-| `/kb review [focus]` | 整理の候補をエージェントに渡します。 |
-| `/kb docs` | 文書索引を生成します。 |
-| `/kb bench <fixture.json>` | 検索方式ごとの再現率と速度を計測します。 |
-| `/kb capture [focus]` | このセッションで得た知識を、エージェントに記録させます。`capture.mode` が `manual` のときだけ動きます。 |
+| `/knowledge status` | 有効状態、有効な root、索引の段階と推定トークン数、lint の件数、検索方式を表示します。引数がない場合の既定です。 |
+| `/knowledge config` | 既定値を適用した後の設定を JSON で表示します。 |
+| `/knowledge lint` | lint の結果を表示します。 |
+| `/knowledge list` | `active` のエントリを一覧します。 |
+| `/knowledge tags` | タグと件数を表示します。 |
+| `/knowledge find <tag>...` | 全タグを持つ `active` のエントリを表示します。 |
+| `/knowledge search <query>` | 設定の検索方式で検索します。 |
+| `/knowledge stale` | 陳腐化の候補を表示します。 |
+| `/knowledge dups` | 内容が似たエントリの組を表示します。 |
+| `/knowledge refs <id>` | そのエントリを参照しているエントリを表示します。 |
+| `/knowledge review [focus]` | 整理の候補をエージェントに渡します。 |
+| `/knowledge docs` | 文書索引を生成します。 |
+| `/knowledge bench <fixture.json>` | 検索方式ごとの再現率と速度を計測します。 |
+| `/knowledge capture [focus]` | このセッションで得た知識を、エージェントに記録させます。`capture.mode` が `manual` のときだけ動きます。 |
 
 ### `kb`（CLI）
 

@@ -1,5 +1,5 @@
 /**
- * Shared output formatting for the CLI and the `/kb` command, so both surfaces
+ * Shared output formatting for the CLI and the `/knowledge` command, so both surfaces
  * stay in sync (DESIGN.md §14).
  */
 

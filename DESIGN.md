@@ -38,13 +38,13 @@
 - 参照グラフによる multi-hop 検索。`[[id]]` と `supersedes` は参照解決と人間向け表示のためのものとする。
 - reranker による検索品質の向上。
 - 実行ログからの自動 Reflector。
-- 会話内容の自動キャプチャ。キャプチャは明示的な `/kb capture` のみで実行する。
+- 会話内容の自動キャプチャ。キャプチャは明示的な `/knowledge capture` のみで実行する。
 - チーム共有 root(`team` scope、§4.1、§5)への書き込み。team root は read-only。
 - document index(§12)のシステムプロンプト注入。
 
 ### 0.4 拡張の条件
 
-最小の成立条件を超える機能(追加の検索 backend、document index、bench、`/kb review`、recall など)は、最小構成には含まれません。現在の設計に含まれるものも今後の追加も、達成状態への寄与を実測で示せるときだけ維持・追加します。実測で寄与が示せない機能は削除の候補とします。
+最小の成立条件を超える機能(追加の検索 backend、document index、bench、`/knowledge review`、recall など)は、最小構成には含まれません。現在の設計に含まれるものも今後の追加も、達成状態への寄与を実測で示せるときだけ維持・追加します。実測で寄与が示せない機能は削除の候補とします。
 
 ## 1. 概要
 
@@ -61,7 +61,7 @@
 | 検索 | lexical(既定)/ FTS5 / embedding / hybrid を選択できる。タグ・status・scope で絞れる |
 | 書き込み | 既存パスへの `write` のみ拒否。検証は書き込み後。専用ツールなし |
 | キャプチャ | `manual`(コマンド実行時のみ) |
-| 整理 | `/kb review` が重複・陳腐化・未参照の候補をモデルに提示し、低価値と衝突はモデルに判断させる |
+| 整理 | `/knowledge review` が重複・陳腐化・未参照の候補をモデルに提示し、低価値と衝突はモデルに判断させる |
 | document index | 生成のみ。注入しない |
 | CLI | `kb` bin。list / tags / find / search(lexical) / lint / stale / dups / refs / docs / bench。lint は CI の必須ゲート |
 | 実行時依存 | なし(Node 組み込みのみ) |
@@ -72,14 +72,14 @@
 flowchart LR
   W["write / edit"] --> H["hook: 既存 write の拒否"]
   H --> K["knowledge/<id>.md"]
-  CAP["/kb capture"] --> H
+  CAP["/knowledge capture"] --> H
   K --> C[catalog]
   C --> I["injected index"]
   C --> S["kb_search"]
   S --> R[read]
   R --> K
   K --> L["kb lint / stale / dups"]
-  K --> RV["/kb review 候補"] --> W
+  K --> RV["/knowledge review 候補"] --> W
   K --> T["kb docs の入力"]
 ```
 
@@ -87,8 +87,8 @@ flowchart LR
 
 - 読み出し: injected index または `kb_search` の結果から `read` で本文を読む。`when` は英語で書くため、検索語も英語で指定する。非ASCII の検索語で0件のときは英語の検索を促す注記を返す(サイレントの0件にしない)。
 - 書き込み: `write` / `edit` → 既存パスへの `write` のみ hook が拒否 → catalog 更新 → 書き込み後に lint 通知 → compaction または次セッションの索引に反映。
-- キャプチャ: `/kb capture` → 通常の agent turn → 上記の書き込み経路。
-- 整理: `/kb review` → 重複・陳腐化・未参照の候補をモデルへ提示 → モデルが `read` して低価値と衝突を判断し、`write` / `edit` で適用。
+- キャプチャ: `/knowledge capture` → 通常の agent turn → 上記の書き込み経路。
+- 整理: `/knowledge review` → 重複・陳腐化・未参照の候補をモデルへ提示 → モデルが `read` して低価値と衝突を判断し、`write` / `edit` で適用。
 
 ## 2. 要件
 
@@ -485,7 +485,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 実効予算は `min(injection.maxTokens, max(injection.floorTokens, contextWindow × injection.contextFraction))`。`contextWindow` 不明時は `maxTokens` を使います。既定は 4,000 / 1,000 / 0.02 で、文脈窓 200k なら 4,000、100k なら 2,000、32k なら 1,000。
 
 - 設定値の検証: 0以下・非数値・`contextFraction` が 0以下または 1超は警告して既定値。`floorTokens > maxTokens` は `floorTokens = maxTokens` に補正し、警告は出さない。
-- 超過時は索引生成時に段階を選び、採用段階と推定トークンを `/kb status` と通知に出す。pointer でも収まらない場合はタグ行→件数行→ヘッダのみの順に削る。固定費が実効予算を超える設定ではヘッダのみを注入し、`overBudget` を `/kb status` に表示する。
+- 超過時は索引生成時に段階を選び、採用段階と推定トークンを `/knowledge status` と通知に出す。pointer でも収まらない場合はタグ行→件数行→ヘッダのみの順に削る。固定費が実効予算を超える設定ではヘッダのみを注入し、`overBudget` を `/knowledge status` に表示する。
 
 | 段階 | 内容 |
 |---|---|
@@ -504,32 +504,32 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 
 ### 10.6 lint サマリ
 
-セッションごとに1回、lint の error / warning が1件以上あるときだけ、モデルへ送る。Pi は `session_start` で custom message、OpenCode はそのセッションの最初のモデル呼び出しで synthetic message として送る。上位8件と残件数、修正指示を含みます。モデルはユーザーの `/kb lint` 実行を待たずに修正へ着手できます。常時予算には含めません。
+セッションごとに1回、lint の error / warning が1件以上あるときだけ、モデルへ送る。Pi は `session_start` で custom message、OpenCode はそのセッションの最初のモデル呼び出しで synthetic message として送る。上位8件と残件数、修正指示を含みます。モデルはユーザーの `/knowledge lint` 実行を待たずに修正へ着手できます。常時予算には含めません。
 
 ## 11. 品質管理
 
 ### 11.1 lint
 
-§7.2 の検査を書き込み後の通知、`/kb lint`、CLI で共有する。CLI はエラーありで1、警告のみで0。
+§7.2 の検査を書き込み後の通知、`/knowledge lint`、CLI で共有する。CLI はエラーありで1、警告のみで0。
 
 ### 11.2 参照
 
-本文の `[[id]]` と `supersedes` から参照グラフを作る。`/kb refs <id>` は採用 root(§5.3)の被参照を表示する。
+本文の `[[id]]` と `supersedes` から参照グラフを作る。`/knowledge refs <id>` は採用 root(§5.3)の被参照を表示する。
 
 ### 11.3 陳腐化
 
-- `review_after` 超過をセッション開始時と `/kb stale` が報告する。
+- `review_after` 超過をセッション開始時と `/knowledge stale` が報告する。
 - Git 最終更新日が `stale.days`(既定365)超のエントリも報告する。Git 不在・非リポジトリ・shallow clone は警告してスキップする。
 
 ### 11.4 重複・陳腐化・未参照
 
 | 候補 | 選出 | 上限 |
 |---|---|---|
-| 重複 | `/kb dups` と同じ字句類似(0.6以上) | 5 |
+| 重複 | `/knowledge dups` と同じ字句類似(0.6以上) | 5 |
 | 陳腐化 | `review_after` 超過、または git 日付超過 | 10 |
 | 未参照 | `[[id]]` と `supersedes` のどちらからも参照されない active エントリ | 10 |
 
-- `/kb review [focus]` が候補をモデルに渡し、統合・superseded 化・レビュー日更新・retire を判断させる。モデルは通常の write/edit で適用する。プラグインはエントリを書かない。
+- `/knowledge review [focus]` が候補をモデルに渡し、統合・superseded 化・レビュー日更新・retire を判断させる。モデルは通常の write/edit で適用する。プラグインはエントリを書かない。
 - 低価値(結論が他エントリに吸収されている)と結論の衝突は、プラグインが計算せず**プロンプトでモデルに判断させる**。候補に含まれないものも報告するよう指示する。
 - 判定に必要な記憶機構・スコアリング・実行時依存を追加しない(§0.3)。
 - 候補の表示では ID だけを単独で出さない。必ず title を併記する。
@@ -545,7 +545,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | 3 | 再検証可能性 | 根拠(URL・絶対パス・再現手順)へ指せないなら書かない |
 
 - テスト1と2の機械化できる部分は `source` で判定する。`source` がリポジトリ内相対パスなら warning とする(§11.1)。
-- 意味の適切さはモデルが判断する。`/kb review` では低価値・衝突の候補として扱う(§11.4)。
+- 意味の適切さはモデルが判断する。`/knowledge review` では低価値・衝突の候補として扱う(§11.4)。
 
 ## 12. document index
 
@@ -572,8 +572,8 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 
 | mode | 動作 |
 |---|---|
-| `off` | 無効。`/kb capture` は無効と通知して何もしない |
-| `manual`(既定) | `/kb capture [focus]` が `pi.sendUserMessage()` で指示を送り、通常の agent turn を1回発生させる。入れ子モデル呼び出しはしない。ストリーミング中は `deliverAs: "followUp"`。送信失敗は通知して中断 |
+| `off` | 無効。`/knowledge capture` は無効と通知して何もしない |
+| `manual`(既定) | `/knowledge capture [focus]` が `pi.sendUserMessage()` で指示を送り、通常の agent turn を1回発生させる。入れ子モデル呼び出しはしない。ストリーミング中は `deliverAs: "followUp"`。送信失敗は通知して中断 |
 
 抽出の判断(何を知識にするか、原子性、重複確認、`source` の書き方)は同梱スキル `knowledge-curation` に置く。ファイル名はモデルが命名する(§6.3)ため、命名規則に従う。自動キャプチャは設計対象外(§0.3)。
 
@@ -595,7 +595,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 
 - 設定解決は host ごとだが、`kb` は global 2ファイルと project 2ファイルを順に読む(§15.1)。project は trust 時のみ読む。
 - CI の最小構成は `kb lint` と `kb docs --check`。警告のみでは止めない。任意で `kb dups --max <n>` を追加できる。
-- `/kb status` は host コマンド(実装済み)。CLI の `kb status` は提供しない。
+- `/knowledge status` は host コマンド(実装済み)。CLI の `kb status` は提供しない。
 
 ## 15. 統合面(host)
 
@@ -614,7 +614,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | 書き込み後の lint 通知 | `tool_result` に追記 | `tool` hook `execute.after` で `result` を差し替え |
 | catalog の再走査 | `bash` の `tool_result` | `shell` の `execute.after` |
 | 検索ツール | `registerTool`(typebox) | `tool` transform(JSON Schema) |
-| `/kb` | `registerCommand` + UI 通知 | `command` transform + 会話への注入 |
+| `/knowledge` | `registerCommand` + UI 通知 | `command` transform + 会話への注入 |
 | スキル | パッケージの `skills` ディレクトリ | 設定の `skills` 配列で同じディレクトリを指す |
 | project 設定 | `.pi/knowledge.json` | `.opencode/knowledge.json` |
 | global 設定 | `$PI_CODING_AGENT_DIR/knowledge.json` | `$XDG_CONFIG_HOME/opencode/knowledge.json` |
@@ -640,10 +640,10 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 - 閲覧は host の read ツール、編集は write / edit をそのまま使う。モデル向けツールは `kb_search` の1つ。
 - Pi は全モード(tui / rpc / json / print)で動作する。UI 通知は `ctx.hasUI` でガードする。
 - `kb_search` は root が無くても登録し、空結果と案内を返す。
-- `enabled: false` は全機能を無効化し、`/kb status` だけを残す。
+- `enabled: false` は全機能を無効化し、`/knowledge status` だけを残す。
 - 設定の読み込みに失敗した場合は通知して注入なしで継続する。
-- `/kb status` は enabled、有効 root、注入段階と推定トークン、backend、lint 件数を表示する。
-- `/kb config` はマージと既定値を適用した解決済み設定を JSON で表示する。設定を変更するコマンドは持たず、設定は `knowledge.json` で変更する。
+- `/knowledge status` は enabled、有効 root、注入段階と推定トークン、backend、lint 件数を表示する。
+- `/knowledge config` はマージと既定値を適用した解決済み設定を JSON で表示する。設定を変更するコマンドは持たず、設定は `knowledge.json` で変更する。
 
 ## 16. 設定スキーマ
 
@@ -759,7 +759,7 @@ ID はエントリのファイル名(`<root>/<id>.md` の `.md` を除いた部�
 | 2 品質 (実装済み) | stale / refs / dups / docs、bench | FR7–FR8、性能目標 |
 | 3 検証と拡張 (実装済み) | FTS5 / embedding / hybrid、user root の運用評価 | bench で backend を比較し採用を決定 |
 | 4 共有 (実装済み) | readonly の共有 root(team)、索引の永続キャッシュ | 複数人運用で破綻しない |
-| 5 自律キュレーション (実装済み) | lint サマリのモデル通知、`/kb review`(重複・陳腐化・未参照候補の判定と統合・superseded の提案) | 提案が通常の write/edit 経路で適用できる |
+| 5 自律キュレーション (実装済み) | lint サマリのモデル通知、`/knowledge review`(重複・陳腐化・未参照候補の判定と統合・superseded の提案) | 提案が通常の write/edit 経路で適用できる |
 | 6 OpenCode 対応 (実装済み) | `src/core` と `src/hosts` の分離、OpenCode アダプタ、`kb` の設定解決の共通化、モデル命名 ID、事後検証への統一、採用規則(§11.5) | 両 host で同じ表面と同じ判定になり、ADR を満たす |
 
 ## 22. 未決事項

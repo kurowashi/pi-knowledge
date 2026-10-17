@@ -80,7 +80,7 @@ export interface ToolResult {
 	details: unknown;
 }
 
-/** Result of a `/kb` invocation. Every host renders `text` the same way. */
+/** Result of a `/knowledge` invocation. Every host renders `text` the same way. */
 export interface CommandOutcome {
 	kind: "report" | "state" | "prompt";
 	text: string;
@@ -172,7 +172,10 @@ export class Knowledge {
 		const issues = lintCatalog(this.catalog, this.roots, new Date());
 		const counts = issueCounts(issues);
 		if (counts.errors > 0 || counts.warnings > 0) {
-			this.host.notify(`knowledge: ${counts.errors} errors, ${counts.warnings} warnings (run /kb lint)`, "warning");
+			this.host.notify(
+				`knowledge: ${counts.errors} errors, ${counts.warnings} warnings (run /knowledge lint)`,
+				"warning",
+			);
 		}
 		this.announceWarnings();
 	}
@@ -365,7 +368,7 @@ export class Knowledge {
 		return renderHits(result, this.roots.length > 1, query);
 	}
 
-	/** `/kb status`: resolved state a user can act on (DESIGN.md §16). */
+	/** `/knowledge status`: resolved state a user can act on (DESIGN.md §16). */
 	statusReport(): string {
 		if (this.catalog === null || this.config === null) return "pi-knowledge: not loaded";
 		const counts = issueCounts(lintCatalog(this.catalog, this.roots, new Date()));
@@ -390,7 +393,7 @@ export class Knowledge {
 		return result.fallback ? `${text}\n(fallback: ${result.fallbackReason ?? "unavailable"})` : text;
 	}
 
-	/** Report text for a `/kb` subcommand, or null when the action is unknown. */
+	/** Report text for a `/knowledge` subcommand, or null when the action is unknown. */
 	report(action: string, rest: string[]): Promise<string | null> {
 		return commandReport(action, rest, {
 			catalog: this.catalog,
@@ -403,14 +406,14 @@ export class Knowledge {
 		});
 	}
 
-	/** Prompt text for `/kb capture`, or null when capture is off. */
+	/** Prompt text for `/knowledge capture`, or null when capture is off. */
 	capturePrompt(focus: string[]): string | null {
 		if (this.config?.capture.mode !== "manual") return null;
 		const suffix = focus.length > 0 ? `\nFocus: ${focus.join(" ")}` : "";
 		return `${CAPTURE_PROMPT}${suffix}`;
 	}
 
-	/** Prompt text for `/kb review`, or null when there is nothing to review. */
+	/** Prompt text for `/knowledge review`, or null when there is nothing to review. */
 	reviewPrompt(focus: string[]): string | null {
 		if (this.catalog === null || this.config === null) return null;
 		const candidates = reviewCandidates(this.catalog, this.config, this.roots, this.options.cwd, new Date());
@@ -421,9 +424,9 @@ export class Knowledge {
 
 	/** Command surface shared by every host. */
 	static usage =
-		"usage: /kb status | config | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]";
+		"usage: /knowledge status | config | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]";
 
-	/** Run a `/kb` subcommand. `text` is for the user; `prompt` is for the model. */
+	/** Run a `/knowledge` subcommand. `text` is for the user; `prompt` is for the model. */
 	async runCommand(args: string): Promise<CommandOutcome> {
 		if (this.config === null) return { kind: "state", text: "pi-knowledge: not loaded", level: "warning" };
 		if (!this.config.enabled) return { kind: "state", text: "pi-knowledge: disabled", level: "info" };

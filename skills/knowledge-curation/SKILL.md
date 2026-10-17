@@ -45,7 +45,7 @@ A repository-relative `source` makes `kb lint` warn. That is the machine-checkab
 - `kb lint` reports form errors, unknown fields, dangling `[[id]]` links, stale `review_after`, duplicates, and entries that stay active after being superseded.
 - `kb dups` lists near-duplicate candidates with their titles. `kb refs <id>` lists backlinks from `[[id]]` and `supersedes`.
 - At session start, a `knowledge_lint` message lists the top findings when any exist. Fix them with `edit` in the same session.
-- `/kb review` sends duplicate, stale, and unlinked candidates and asks you to judge them. Read each candidate entry, then apply merges with `write` / `edit`; it never rewrites entries for you.
+- `/knowledge review` sends duplicate, stale, and unlinked candidates and asks you to judge them. Read each candidate entry, then apply merges with `write` / `edit`; it never rewrites entries for you.
 - During review, also judge what the plugin cannot: entries whose conclusion is already covered elsewhere, and pairs of entries whose conclusions conflict. Report them in your reply and fix them with the same tools.
 - An unlinked entry is not automatically a bad entry: it can be the only record of a fact. Check before retiring it.
 - Deleting an entry is allowed when nothing references it; check `kb refs <id>` first.

@@ -82,8 +82,8 @@ function harness(cwd: string): Harness {
 			return result as T;
 		},
 		run(args: string): Promise<unknown> {
-			const handler = commands.get("kb");
-			if (!handler) throw new Error("the kb command is not registered");
+			const handler = commands.get("knowledge");
+			if (!handler) throw new Error("the knowledge command is not registered");
 			return Promise.resolve(handler(args, ctx));
 		},
 		search(params: Record<string, unknown>): Promise<ToolResultLike> {

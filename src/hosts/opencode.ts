@@ -14,8 +14,8 @@
  *   native enforcement path.
  * - `tool` hook `execute.after`: refresh the catalog and append lint notes.
  *
- * The model-facing surface is `kb_search` plus the `/kb` command. OpenCode's
- * server plugins have no toast equivalent, so `/kb` reports into the
+ * The model-facing surface is `kb_search` plus the `/knowledge` command. OpenCode's
+ * server plugins have no toast equivalent, so `/knowledge` reports into the
  * conversation (DESIGN.md §15.2).
  */
 
@@ -179,11 +179,11 @@ const plugin: Plugin = {
 
 		await ctx.command.transform((editor) => {
 			editor.add({
-				name: "kb",
+				name: "knowledge",
 				description:
 					"pi-knowledge: status | config | lint | list | tags | find <tag...> | search <query> | stale | dups | refs <id> | review [focus] | docs | bench | capture [focus]",
 				async execute({ sessionID, prompt, delivery }: CommandInvocation) {
-					const outcome = await knowledge.runCommand(prompt.text.replace(/^\/kb\b/, "").trim());
+					const outcome = await knowledge.runCommand(prompt.text.replace(/^\/knowledge\b/, "").trim());
 					await ctx.session.prompt({ sessionID, text: outcome.text, delivery });
 					if (outcome.prompt !== undefined) {
 						await ctx.session.prompt({ sessionID, text: outcome.prompt, delivery });

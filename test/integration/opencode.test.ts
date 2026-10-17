@@ -361,11 +361,11 @@ test("the command reports into the conversation and asks the model to act", asyn
 	await withProject(async (cwd) => {
 		writeEntry(join(cwd, "knowledge"), "pi_alone_entry", { title: "Alone" }, BODY);
 		const loaded = await load(cwd);
-		const command = loaded.commands.get("kb");
+		const command = loaded.commands.get("knowledge");
 		assert.ok(command);
 		await command.execute({
 			sessionID: "ses_1",
-			prompt: { text: "/kb review" },
+			prompt: { text: "/knowledge review" },
 			delivery: "steer",
 		} as unknown as CommandInvocation);
 		assert.equal(loaded.prompts.length, 2, "the report and the review prompt");
